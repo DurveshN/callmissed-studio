@@ -47,6 +47,13 @@ export class SessionPool {
     if (changed) void this.releaseAll()
   }
 
+  /** Absolute path of a model file (for non-ONNX assets such as dictionaries). */
+  filePath(modelId: string, file: string): string {
+    const path = join(this.modelsDir, modelId, file)
+    if (!existsSync(path)) throw new ModelMissingError(`Model file not found: ${path}`)
+    return path
+  }
+
   get(modelId: string, file: string): Promise<LoadedSession> {
     const key = `${modelId}/${file}`
     let pending = this.sessions.get(key)

@@ -3,7 +3,7 @@
  * process.parentPort and jobs from the renderer on a dedicated MessagePort.
  */
 import { InferenceSession } from 'onnxruntime-node'
-import { jobs } from '@shared/ml/jobs'
+import { jobs, type JobInput } from '@shared/ml/jobs'
 import type { ModelPack } from '@shared/ml/models'
 import type {
   FromWorker,
@@ -13,12 +13,14 @@ import type {
   WorkerControl,
   WorkerNotice
 } from '@shared/ml/protocol'
+import { inpaint } from './handlers/inpaint'
+import { ocr } from './handlers/ocr'
 import { probe } from './handlers/probe'
 import { CancelledError, JobQueue } from './job-queue'
 import { ModelLoadError, ModelMissingError, SessionPool } from './session-pool'
 
 interface Port {
-  postMessage(message: FromWorker, transfer?: unknown[]): void
+  postMessage(message: FromWorker): void
   on(event: 'message', listener: (e: { data: ToWorker }) => void): void
   on(event: 'close', listener: () => void): void
   start(): void
@@ -62,7 +64,13 @@ async function execute(job: JobRequest, signal: AbortSignal, reply: (m: FromWork
     let result: unknown
     switch (job.kind) {
       case 'probe':
-        result = await probe(input.data, ctx)
+        result = await probe(input.data as JobInput<'probe'>, ctx)
+        break
+      case 'ocr':
+        result = await ocr(input.data as JobInput<'ocr'>, ctx)
+        break
+      case 'inpaint':
+        result = await inpaint(input.data as JobInput<'inpaint'>, ctx)
         break
     }
     reply({ type: 'result', id: job.id, result })
@@ -72,6 +80,7 @@ async function execute(job: JobRequest, signal: AbortSignal, reply: (m: FromWork
 }
 
 function attach(port: Port): void {
+  // MessagePortMain cannot transfer ArrayBuffers; results are copied by structured clone.
   const reply = (m: FromWorker) => port.postMessage(m)
   port.on('message', ({ data }) => {
     if (data?.type === 'run' && typeof data.id === 'number' && Object.hasOwn(jobs, data.kind)) {

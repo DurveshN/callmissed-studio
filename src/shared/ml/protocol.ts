@@ -5,7 +5,7 @@ import type { ModelPack } from './models'
  * Kept free of runtime dependencies so the preload bundle stays small; the worker validates with jobs.ts.
  */
 
-export type JobKind = 'probe'
+export type JobKind = 'probe' | 'ocr' | 'inpaint'
 
 export interface JobRequest {
   type: 'run'
