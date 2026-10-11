@@ -3,6 +3,7 @@ import { ALL_FONTS, availableWeights, type FontFamily } from './catalog'
 import { loadBundledFonts } from './load-fonts'
 import {
   TEXT_LINE_HEIGHT as LINE_HEIGHT,
+  type FontCandidate,
   type FontMatchRequest,
   type FontMatchResult,
   type FontWorkerMessage
@@ -57,7 +58,7 @@ function targetCoverage(req: FontMatchRequest, box: InkBox, w: number, h: number
           xx++
         ) {
           total++
-          if (req.mask[(box.top + yy) * req.width + box.left + xx]) ink++
+          ink += (req.mask[(box.top + yy) * req.width + box.left + xx] as number) / 255
         }
       }
       out[y * w + x] = total ? ink / total : 0
@@ -99,6 +100,9 @@ function candidateWeights(font: FontFamily): number[] {
   return [...new Set(picks)]
 }
 
+/** How many ranked candidates are returned (for document-level consistency voting). */
+const ALTERNATIVES = 8
+
 function match(req: FontMatchRequest): FontMatchResult | null {
   const box = inkBox(req)
   if (!box || !req.text.trim()) return null
@@ -109,7 +113,7 @@ function match(req: FontMatchRequest): FontMatchResult | null {
   const ctx = context(w, h)
   const probe = context(8, 8)
 
-  let best: (FontMatchResult & { score: number }) | null = null
+  const scored: { family: string; weight: number; fontSize: number; score: number }[] = []
   for (const font of usable) {
     for (const weight of candidateWeights(font)) {
       const css = (size: number) => `${weight} ${size}px "${font.family}"`
@@ -137,36 +141,32 @@ function match(req: FontMatchRequest): FontMatchResult | null {
         inter += Math.min(a, b)
         union += Math.max(a, b)
       }
-      const score = (union ? inter / union : 0) - 0.6 * heightError
-      if (!best || score > best.score) {
-        best = {
-          family: font.family,
-          weight,
-          fontSize: (100 * box.width) / inkW,
-          score,
-          inkLeft: 0,
-          inkTop: 0
-        }
-      }
+      scored.push({
+        family: font.family,
+        weight,
+        fontSize: (100 * box.width) / inkW,
+        score: (union ? inter / union : 0) - 0.6 * heightError
+      })
     }
   }
-  if (!best) return null
+  if (scored.length === 0) return null
+  scored.sort((a, b) => b.score - a.score)
 
-  // Where Konva (alphabetic baseline, non-legacy layout) will put the ink inside a text box at this size.
-  probe.font = `${best.weight} ${best.fontSize}px "${best.family}"`
-  const metrics = probe.measureText(req.text)
-  const sample = probe.measureText('M')
-  const baseline =
-    (sample.fontBoundingBoxAscent - sample.fontBoundingBoxDescent) / 2 + (LINE_HEIGHT * best.fontSize) / 2
-  return {
-    family: best.family,
-    weight: best.weight,
-    fontSize: best.fontSize,
-    score: best.score,
-    // Offset from the text box's top-left to the ink box's top-left, and the ink box in the crop.
-    inkLeft: box.left - -metrics.actualBoundingBoxLeft,
-    inkTop: box.top - (baseline - metrics.actualBoundingBoxAscent)
+  // Where Konva (alphabetic baseline, non-legacy layout) will put the ink inside a text box at each size.
+  const place = (c: (typeof scored)[number]): FontCandidate => {
+    probe.font = `${c.weight} ${c.fontSize}px "${c.family}"`
+    const metrics = probe.measureText(req.text)
+    const sample = probe.measureText('M')
+    const baseline =
+      (sample.fontBoundingBoxAscent - sample.fontBoundingBoxDescent) / 2 + (LINE_HEIGHT * c.fontSize) / 2
+    return {
+      ...c,
+      inkLeft: box.left + metrics.actualBoundingBoxLeft,
+      inkTop: box.top - (baseline - metrics.actualBoundingBoxAscent)
+    }
   }
+  const alternatives = scored.slice(0, ALTERNATIVES).map(place)
+  return { ...(alternatives[0] as FontCandidate), alternatives }
 }
 
 scope.onmessage = (event: MessageEvent<FontWorkerMessage>) => {

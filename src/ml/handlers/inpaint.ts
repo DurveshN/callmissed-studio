@@ -1,10 +1,23 @@
 import type { JobInput, JobResult } from '@shared/ml/jobs'
 import { throwIfCancelled } from '../job-queue'
-import { inpaintLama } from '../pipelines/inpaint/lama'
+import { inpaintAuto } from '../pipelines/inpaint/auto'
+import { lamaInfer, type LamaInfer } from '../pipelines/inpaint/lama'
 import { inpaintTelea } from '../pipelines/inpaint/telea'
 import { textMask } from '../pipelines/inpaint/text-mask'
-import { ModelMissingError } from '../session-pool'
 import type { HandlerContext } from './context'
+
+const LAMA_FILE = 'lama_fp32.onnx'
+
+/** LaMa through the session pool (DirectML failures fall back to CPU), or null when not installed. */
+function lamaRunner(ctx: HandlerContext): LamaInfer | null {
+  try {
+    ctx.pool.filePath('inpaint', LAMA_FILE)
+  } catch {
+    return null
+  }
+  return async (image, mask) =>
+    (await ctx.pool.run('inpaint', LAMA_FILE, (s) => lamaInfer(s)(image, mask))).result
+}
 
 export async function inpaint(
   input: JobInput<'inpaint'>,
@@ -14,19 +27,13 @@ export async function inpaint(
   const mask = input.mask
     ? { width: input.width, height: input.height, data: input.mask }
     : textMask(img, input.textRects ?? [])
-  ctx.progress(0.1)
-
-  if (input.quality === 'auto') {
-    try {
-      const lama = await ctx.pool.get('inpaint', 'lama_fp32.onnx')
-      throwIfCancelled(ctx.signal)
-      const out = await inpaintLama(lama.session, img, mask)
-      return { pixels: out.data, method: 'lama' }
-    } catch (error) {
-      // Without the optional LaMa pack, fall back to the built-in fill.
-      if (!(error instanceof ModelMissingError)) throw error
-    }
-  }
+  ctx.progress(0.05)
   throwIfCancelled(ctx.signal)
-  return { pixels: inpaintTelea(img, mask.data).data, method: 'telea' }
+
+  if (input.quality === 'fast') return { pixels: inpaintTelea(img, mask.data).data, method: 'telea' }
+  const { image, usedLama } = await inpaintAuto(img, mask, lamaRunner(ctx), {
+    progress: (p) => ctx.progress(0.05 + 0.95 * p),
+    checkCancelled: () => throwIfCancelled(ctx.signal)
+  })
+  return { pixels: image.data, method: usedLama ? 'lama' : 'telea' }
 }

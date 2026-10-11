@@ -2,6 +2,7 @@
  * ML worker entry, run by Electron's utilityProcess. Receives control messages from main on
  * process.parentPort and jobs from the renderer on a dedicated MessagePort.
  */
+import { constants, setPriority } from 'node:os'
 import { InferenceSession } from 'onnxruntime-node'
 import { jobs, type JobInput } from '@shared/ml/jobs'
 import type { ModelPack } from '@shared/ml/models'
@@ -31,10 +32,16 @@ const notify = (notice: WorkerNotice) => parent.postMessage(notice)
 
 const pool = new SessionPool(
   (path, options) => InferenceSession.create(path, options),
-  (message) => notify({ type: 'gpu-failed', message })
+  (message) => notify({ type: 'gpu-failed', message }),
+  (file) => notify({ type: 'gpu-incompatible', file })
 )
 const queue = new JobQueue()
 let packs: ModelPack[] = []
+
+/** Files of packs marked `gpu: false` in the manifest (known to fail or gain nothing on DirectML). */
+function cpuOnlyPackFiles(list: ModelPack[]): string[] {
+  return list.filter((p) => p.gpu === false).flatMap((p) => p.files.map((f) => `${p.id}/${f.name}`))
+}
 
 function classify(error: unknown): { code: MlErrorCode; message: string } {
   if (error instanceof CancelledError) return { code: 'CANCELLED', message: 'Cancelled' }
@@ -98,7 +105,9 @@ parent.on('message', (event: { data: WorkerControl; ports: Port[] }) => {
   const msg = event.data
   if (msg.type === 'configure') {
     packs = msg.packs
-    void pool.configure(msg.modelsDir, msg.gpu).then(() => notify({ type: 'ack', requestId: msg.requestId }))
+    void pool
+      .configure(msg.modelsDir, msg.gpu, [...msg.cpuOnly, ...cpuOnlyPackFiles(msg.packs)])
+      .then(() => notify({ type: 'ack', requestId: msg.requestId }))
   } else if (msg.type === 'connect') {
     const port = event.ports[0]
     if (port) attach(port)
@@ -107,4 +116,11 @@ parent.on('message', (event: { data: WorkerControl; ports: Port[] }) => {
   }
 })
 
+// Chromium starts utility processes at background priority; on hybrid CPUs Windows then keeps them on
+// efficiency cores, which made inference several times slower (LaMa: ~20 s instead of ~3.4 s).
+try {
+  setPriority(constants.priority.PRIORITY_NORMAL)
+} catch (error) {
+  console.warn('[ml] could not raise worker priority:', error)
+}
 notify({ type: 'ready' })

@@ -71,7 +71,23 @@ function letterbox(img: Rgba): { padded: Rgba; scale: number; w: number; h: numb
   return { padded, scale, w, h }
 }
 
-export async function inpaintLama(session: InferenceSession, src: Rgba, mask: Gray): Promise<Rgba> {
+/** Runs LaMa on 512×512 inputs: image RGB 0..1 [1,3,512,512] and mask {0,1} [1,1,512,512]; returns RGB 0..255. */
+export type LamaInfer = (image: Float32Array, mask: Float32Array) => Promise<Float32Array>
+
+export function lamaInfer(session: InferenceSession): LamaInfer {
+  return async (image, mask) => {
+    const outputs = await session.run({
+      [session.inputNames[0] as string]: new Tensor('float32', image, [1, 3, SIZE, SIZE]),
+      [session.inputNames[1] as string]: new Tensor('float32', mask, [1, 1, SIZE, SIZE])
+    })
+    const result = outputs[session.outputNames[0] as string]?.data as Float32Array | undefined
+    if (!result) throw new Error('LaMa produced no output')
+    return result
+  }
+}
+
+/** Inpaints the masked pixels of `src` with LaMa using a context crop around the whole mask. */
+export async function inpaintLama(infer: LamaInfer, src: Rgba, mask: Gray): Promise<Rgba> {
   const bounds = maskBounds(mask)
   if (!bounds) return { ...src, data: src.data.slice() }
   const box = contextBox(bounds, src.width, src.height)
@@ -98,12 +114,7 @@ export async function inpaintLama(session: InferenceSession, src: Rgba, mask: Gr
     image[2 * plane + i] = (padded.data[i * 4 + 2] as number) / 255
     maskTensor[i] = m512.data[i] ? 1 : 0
   }
-  const outputs = await session.run({
-    [session.inputNames[0] as string]: new Tensor('float32', image, [1, 3, SIZE, SIZE]),
-    [session.inputNames[1] as string]: new Tensor('float32', maskTensor, [1, 1, SIZE, SIZE])
-  })
-  const result = outputs[session.outputNames[0] as string]?.data as Float32Array | undefined
-  if (!result) throw new Error('LaMa produced no output')
+  const result = await infer(image, maskTensor)
 
   // Back to crop size (only the letterboxed area), then blend through a feathered mask.
   const generated = createRgba(w, h)

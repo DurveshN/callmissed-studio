@@ -94,7 +94,13 @@ if (!app.requestSingleInstanceLock()) {
       modelsDir,
       packs: manifest.packs,
       gpu: () => settings.get().gpu,
-      onGpuFailed: (message) => broadcast('ml:gpu-failed', { message })
+      cpuOnly: () => settings.get().gpuIncompatible,
+      onGpuFailed: (message) => broadcast('ml:gpu-failed', { message }),
+      // Remember per device so later sessions skip the failing GPU attempt.
+      onGpuIncompatible: (file) => {
+        const known = settings.get().gpuIncompatible
+        if (!known.includes(file)) void settings.update({ gpuIncompatible: [...known, file] })
+      }
     })
     ml = supervisor
     supervisor.start()

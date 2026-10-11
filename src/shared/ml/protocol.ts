@@ -37,7 +37,15 @@ export type MlErrorCode =
 
 /** Main → worker control messages (over process.parentPort). */
 export type WorkerControl =
-  | { type: 'configure'; modelsDir: string; gpu: GpuMode; packs: ModelPack[]; requestId: number }
+  | {
+      type: 'configure'
+      modelsDir: string
+      gpu: GpuMode
+      /** Model files known to fail on this GPU; loaded on CPU directly. */
+      cpuOnly: string[]
+      packs: ModelPack[]
+      requestId: number
+    }
   | { type: 'connect' }
   | { type: 'release-models'; ids: string[]; requestId: number }
 
@@ -45,6 +53,8 @@ export type WorkerControl =
 export type WorkerNotice =
   | { type: 'ready' }
   | { type: 'gpu-failed'; message: string }
+  /** A model file failed while running on the GPU and now runs on CPU. */
+  | { type: 'gpu-incompatible'; file: string }
   /** Acknowledges a control message carrying `requestId` once it has fully taken effect. */
   | { type: 'ack'; requestId: number }
 

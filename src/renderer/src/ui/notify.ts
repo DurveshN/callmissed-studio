@@ -30,7 +30,14 @@ export const notify = {
   info: (message: string) => useToastStore.getState().push('info', message),
   error: (error: unknown, fallback = 'Something went wrong') => {
     console.error(error)
-    const message = error instanceof StudioError ? error.message : fallback
+    // Errors carrying a code (IPC and ML errors) have messages written for users; show them.
+    const coded = error instanceof Error && typeof (error as { code?: unknown }).code === 'string'
+    const message =
+      error instanceof StudioError
+        ? error.message
+        : coded
+          ? `${fallback}: ${(error as Error).message}`
+          : fallback
     useToastStore.getState().push('error', message)
   }
 }

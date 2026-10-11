@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { strFromU8, unzipSync } from 'fflate'
 import { join, resolve } from 'node:path'
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
 import { readPng } from '../fixtures/png'
@@ -135,4 +136,44 @@ test('detects and converts text inside an inserted image layer (e.g. an AI resul
 test('fixture is intact', () => {
   // Guards against accidentally editing the committed fixture.
   expect(readFileSync(poster).length).toBeGreaterThan(10_000)
+})
+
+test('matches fonts consistently across a dense diagram', async () => {
+  await window.getByRole('button', { name: 'Close document' }).click()
+  await window.getByRole('button', { name: 'Don’t save' }).click()
+  await openViaMain(app, resolve('tests/fixtures/diagram.png'))
+  await expect(window.getByTestId('doc-name')).toHaveText('diagram')
+  await window.keyboard.press('d')
+  await expect(bar()).toHaveAttribute('data-status', 'ready', { timeout: 60_000 })
+  await expect(bar()).toContainText('32 text lines found')
+  await bar().getByRole('button', { name: 'Convert all' }).click()
+  await expect(bar()).toBeHidden({ timeout: 120_000 })
+
+  const out = join(dir, 'diagram.cmsp')
+  await stubSaveDialog(app, out)
+  await window.keyboard.press('Control+s')
+  await expect(window.getByText('Saved')).toBeVisible()
+  const doc = JSON.parse(strFromU8(unzipSync(readFileSync(out))['document.json'] as Uint8Array)) as {
+    pages: { layers: { text: string; fontFamily: string; fontWeight: number; fontSize: number }[] }[]
+  }
+  const layers = doc.pages[0]?.layers ?? []
+  expect(layers).toHaveLength(32)
+  expect(layers.map((l) => l.text)).toContain('• rejection flags')
+  // The fixture uses Calibri Bold 26 for titles and Calibri 22 for bullet items.
+  for (const layer of layers.filter((l) => !l.text.startsWith('•') && l.text !== 'structured tuples')) {
+    expect([layer.text, layer.fontFamily, layer.fontWeight, Math.round(layer.fontSize)]).toEqual([
+      layer.text,
+      'Calibri',
+      700,
+      26
+    ])
+  }
+  for (const layer of layers.filter((l) => l.text.startsWith('•'))) {
+    expect([layer.text, layer.fontFamily, layer.fontWeight, Math.round(layer.fontSize)]).toEqual([
+      layer.text,
+      'Calibri',
+      400,
+      22
+    ])
+  }
 })

@@ -95,8 +95,10 @@ async function makeManager(m = manifest()) {
   return { manager, updates }
 }
 
+/** Waits for the download to finish; generous because the suite runs CPU-heavy model tests in parallel. */
 async function settle(manager: ModelManager): Promise<ModelStatus> {
-  for (let i = 0; i < 500; i++) {
+  const deadline = Date.now() + 30_000
+  while (Date.now() < deadline) {
     const status = manager.statuses()[0] as ModelStatus
     if (status.state === 'installed' || status.state === 'error' || status.state === 'missing') return status
     await new Promise((r) => setTimeout(r, 10))
@@ -117,14 +119,18 @@ describe('ModelManager', () => {
     expect(again.manager.isInstalled('ocr')).toBe(true)
   })
 
-  it('resumes from a partial file with an HTTP Range request after a dropped connection', async () => {
-    control.dropAfter = 100_000
-    const { manager } = await makeManager()
-    manager.download(['ocr'])
-    expect((await settle(manager)).state).toBe('installed')
-    expect(control.requests.map((r) => r.range)).toEqual([undefined, 'bytes=100000-'])
-    expect(readFileSync(join(dir, 'models/ocr/det.onnx'))).toEqual(payload)
-  })
+  it(
+    'resumes from a partial file with an HTTP Range request after a dropped connection',
+    { timeout: 40_000 },
+    async () => {
+      control.dropAfter = 100_000
+      const { manager } = await makeManager()
+      manager.download(['ocr'])
+      expect((await settle(manager)).state).toBe('installed')
+      expect(control.requests.map((r) => r.range)).toEqual([undefined, 'bytes=100000-'])
+      expect(readFileSync(join(dir, 'models/ocr/det.onnx'))).toEqual(payload)
+    }
+  )
 
   it('restarts cleanly when the server ignores Range', async () => {
     control.dropAfter = 50_000

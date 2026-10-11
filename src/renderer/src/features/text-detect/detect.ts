@@ -7,8 +7,9 @@ import { notify } from '../../ui/notify'
 import { primeAssetImage } from '../assets/asset-cache'
 import { measureTextHeight } from '../canvas/text-metrics'
 import { DEFAULT_FONT } from '../fonts/catalog'
+import { chooseFonts } from '../fonts/font-consensus'
 import { matchFont } from '../fonts/font-match'
-import { TEXT_LINE_HEIGHT } from '../fonts/font-match-protocol'
+import { TEXT_LINE_HEIGHT, type FontCandidate, type FontMatchResult } from '../fonts/font-match-protocol'
 import { MlError, runJob } from '../ml/ml-client'
 import { modelActions, useModelsStore } from '../models/models-store'
 import { selectActivePage, useDocumentStore } from '../document/store'
@@ -83,6 +84,8 @@ export async function detectText(): Promise<void> {
       provider: result.provider,
       message: lines.length ? null : 'No text found here.'
     })
+    // Match fonts in the background so converting feels instant.
+    for (const line of lines) void matchFor(line)
   } catch (error) {
     if (error instanceof MlError && error.code === 'CANCELLED') return
     useDetectStore.setState({
@@ -96,7 +99,49 @@ export async function detectText(): Promise<void> {
 
 export function cancelDetect(): void {
   abort?.abort()
+  matches.clear()
   resetDetect()
+}
+
+/** Font matches per detected line (computed once, in the font worker). */
+const matches = new Map<string, Promise<FontMatchResult | null>>()
+
+function matchFor(line: DetectedLine): Promise<FontMatchResult | null> {
+  let pending = matches.get(line.id)
+  if (!pending) {
+    pending = matchFont({
+      text: line.text,
+      mask: line.mask.data,
+      width: line.mask.width,
+      height: line.mask.height
+    }).catch((error: unknown) => {
+      console.error('Font matching failed', error)
+      return null
+    })
+    matches.set(line.id, pending)
+  }
+  return pending
+}
+
+/**
+ * Fonts for `targets`, chosen consistently with every detected line of the same style
+ * (see chooseFonts), not just the lines being converted now.
+ */
+async function fontsFor(
+  targets: DetectedLine[],
+  snap: RasterSnapshot
+): Promise<Map<string, FontCandidate | null>> {
+  const all = useDetectStore.getState().lines
+  const results = await Promise.all(all.map(matchFor))
+  const chosen = chooseFonts(
+    all.map((line, i) => ({
+      id: line.id,
+      scale: snap.scale,
+      color: line.style.color,
+      match: results[i] ?? null
+    }))
+  )
+  return new Map(targets.map((t) => [t.id, chosen.get(t.id) ?? null]))
 }
 
 /** Source-pixel regions around groups of nearby lines (each region becomes one inpainting job / patch). */
@@ -152,13 +197,7 @@ function textWidth(text: string, family: string, weight: number, size: number): 
 }
 
 /** An editable text layer that reproduces `line` on the page, using the matched font when one fits. */
-async function textLayerFor(line: DetectedLine, snap: RasterSnapshot): Promise<TextLayer> {
-  const match = await matchFont({
-    text: line.text,
-    mask: line.mask.data,
-    width: line.mask.width,
-    height: line.mask.height
-  })
+function textLayerFor(line: DetectedLine, snap: RasterSnapshot, match: FontCandidate | null): TextLayer {
   const family = match?.family ?? DEFAULT_FONT
   const weight =
     match?.weight ??
@@ -231,16 +270,21 @@ export async function convertLines(ids: string[]): Promise<void> {
     let methodUsed: 'lama' | 'telea' = 'lama'
 
     for (const [n, region] of regions.entries()) {
-      const result = await runJob('inpaint', {
-        width: region.width,
-        height: region.height,
-        pixels: cropPixels(image, region.x, region.y, region.width, region.height),
-        textRects: region.members.map((m) => {
-          const rect = (lines[m] as DetectedLine).rect
-          return { ...rect, cx: rect.cx - region.x, cy: rect.cy - region.y }
-        }),
-        quality: 'auto'
-      })
+      const result = await runJob(
+        'inpaint',
+        {
+          width: region.width,
+          height: region.height,
+          pixels: cropPixels(image, region.x, region.y, region.width, region.height),
+          textRects: region.members.map((m) => {
+            const rect = (lines[m] as DetectedLine).rect
+            return { ...rect, cx: rect.cx - region.x, cy: rect.cy - region.y }
+          }),
+          quality: 'auto'
+        },
+        // Erasing is the slow part: keep the bar moving within each region (0–70% overall).
+        { onProgress: (p) => useDetectStore.setState({ progress: ((n + p) / regions.length) * 0.7 }) }
+      )
       if (result.method === 'telea') methodUsed = 'telea'
       for (let row = 0; row < region.height; row++) {
         filled.set(
@@ -256,7 +300,8 @@ export async function convertLines(ids: string[]): Promise<void> {
     }
 
     const textLayers: TextLayer[] = []
-    for (const line of lines) textLayers.push(await textLayerFor(line, snap))
+    const fonts = await fontsFor(lines, snap)
+    for (const line of lines) textLayers.push(textLayerFor(line, snap, fonts.get(line.id) ?? null))
     const layerAsset =
       snap.target.kind === 'layer'
         ? await writeAsset(docId, await encodePng(filled, image.width, image.height))
@@ -292,6 +337,7 @@ export async function convertLines(ids: string[]): Promise<void> {
 
     const remaining = detect.lines.filter((l) => !ids.includes(l.id))
     if (remaining.length === 0) {
+      matches.clear()
       resetDetect()
     } else {
       // Later conversions must start from the erased pixels.

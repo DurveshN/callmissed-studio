@@ -23,6 +23,8 @@ export const ModelPack = z.object({
   source: z.url(),
   /** Bumped when files change, so installed packs are re-downloaded. */
   version: z.string(),
+  /** false: always run on CPU (the model fails or gains nothing on DirectML). Default true. */
+  gpu: z.boolean().optional(),
   files: z.array(ModelFile).min(1)
 })
 

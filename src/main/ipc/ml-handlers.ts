@@ -20,7 +20,9 @@ export function registerMlHandlers(models: ModelManager, ml: MlSupervisor, setti
   handle('settings:get', () => settings.get())
   handle('settings:update', async (patch) => {
     const gpu = settings.get().gpu
-    const next = await settings.update(patch)
+    // Turning GPU acceleration back on gives previously failing models another try (driver updates).
+    const reset = patch.gpu === 'auto' && gpu !== 'auto' ? { gpuIncompatible: [] } : {}
+    const next = await settings.update({ ...patch, ...reset })
     // Jobs started after this call returns must run with the new GPU mode.
     if (next.gpu !== gpu) await ml.configure()
     return next

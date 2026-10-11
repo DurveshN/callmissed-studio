@@ -26,25 +26,32 @@ const COMMON: InferenceSession.SessionOptions = { graphOptimizationLevel: 'all',
 
 /**
  * Caches one ONNX Runtime session per model file. Tries DirectML first (when allowed) and falls back
- * to CPU; after a DirectML failure the whole pool stays on CPU and reports it once via onGpuFailed.
+ * to CPU: if creating a DirectML session fails the whole pool stays on CPU (reported once via
+ * onGpuFailed); if a model fails while running on DirectML (driver/operator bugs), only that model is
+ * reloaded on CPU, the work is retried, and it stays on CPU for the rest of the session.
  */
 export class SessionPool {
   private readonly sessions = new Map<string, Promise<LoadedSession>>()
   private modelsDir = ''
   private gpu: GpuMode = 'auto'
   private gpuBroken = false
+  /** Model files that failed at run time on DirectML. */
+  private readonly cpuOnly = new Set<string>()
 
   constructor(
     private readonly create: CreateSession,
-    private readonly onGpuFailed: (message: string) => void
+    private readonly onGpuFailed: (message: string) => void,
+    private readonly onCpuOnly: (file: string) => void = () => undefined
   ) {}
 
   /** Applies new settings; resolves once sessions created under the old settings are released. */
-  async configure(modelsDir: string, gpu: GpuMode): Promise<void> {
+  async configure(modelsDir: string, gpu: GpuMode, cpuOnly: string[] = []): Promise<void> {
     const changed = modelsDir !== this.modelsDir || gpu !== this.gpu
     this.modelsDir = modelsDir
     this.gpu = gpu
-    if (gpu === 'auto') this.gpuBroken = false
+    if (gpu === 'auto' && changed) this.gpuBroken = false
+    this.cpuOnly.clear()
+    for (const file of cpuOnly) this.cpuOnly.add(file)
     if (changed) await this.releaseAll()
   }
 
@@ -59,16 +66,44 @@ export class SessionPool {
     const key = `${modelId}/${file}`
     let pending = this.sessions.get(key)
     if (!pending) {
-      pending = this.load(join(this.modelsDir, modelId, file))
+      pending = this.load(join(this.modelsDir, modelId, file), this.cpuOnly.has(key))
       pending.catch(() => this.sessions.delete(key))
       this.sessions.set(key, pending)
     }
     return pending
   }
 
-  private async load(path: string): Promise<LoadedSession> {
+  /**
+   * Runs `work` with the model's session. If it throws on DirectML, the file is reloaded on CPU and
+   * `work` is retried once there.
+   */
+  async run<T>(
+    modelId: string,
+    file: string,
+    work: (session: InferenceSession) => Promise<T>
+  ): Promise<{ result: T; provider: Provider }> {
+    const loaded = await this.get(modelId, file)
+    try {
+      return { result: await work(loaded.session), provider: loaded.provider }
+    } catch (error) {
+      if (loaded.provider !== 'dml') throw error
+      const key = `${modelId}/${file}`
+      console.warn(
+        `[ml] ${key} failed on DirectML, retrying on CPU:`,
+        error instanceof Error ? error.message : error
+      )
+      this.cpuOnly.add(key)
+      this.onCpuOnly(key)
+      this.sessions.delete(key)
+      void loaded.session.release().catch(() => undefined)
+      const cpu = await this.get(modelId, file)
+      return { result: await work(cpu.session), provider: cpu.provider }
+    }
+  }
+
+  private async load(path: string, cpuOnly: boolean): Promise<LoadedSession> {
     if (!existsSync(path)) throw new ModelMissingError(`Model file not found: ${path}`)
-    if (this.gpu === 'auto' && !this.gpuBroken) {
+    if (this.gpu === 'auto' && !this.gpuBroken && !cpuOnly) {
       try {
         return { session: await this.create(path, { ...COMMON, ...DML_OPTIONS }), provider: 'dml' }
       } catch (error) {

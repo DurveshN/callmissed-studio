@@ -133,3 +133,60 @@ describe('models.manifest.json', () => {
     }
   })
 })
+
+describe('SessionPool.run', () => {
+  it('reloads a model on CPU and retries when it fails while running on DirectML', async () => {
+    const created: string[] = []
+    const create = vi.fn(async (_path: string, options: InferenceSession.SessionOptions) => {
+      const provider = options.executionProviders?.includes('dml') ? 'dml' : 'cpu'
+      created.push(provider)
+      return { ...fakeSession(), provider } as unknown as InferenceSession
+    })
+    const pool = new SessionPool(create, vi.fn())
+    pool.configure(modelsDir(), 'auto')
+    const work = vi.fn(async (session: InferenceSession) => {
+      if ((session as unknown as { provider: string }).provider === 'dml')
+        throw new Error('80070057 The parameter is incorrect')
+      return 42
+    })
+    expect(await pool.run('ocr', 'det.onnx', work)).toEqual({ result: 42, provider: 'cpu' })
+    expect(created).toEqual(['dml', 'cpu'])
+    // Stays on CPU afterwards: no new DirectML attempt.
+    expect(await pool.run('ocr', 'det.onnx', work)).toEqual({ result: 42, provider: 'cpu' })
+    expect(created).toEqual(['dml', 'cpu'])
+  })
+
+  it('does not retry failures that happen on CPU', async () => {
+    const pool = new SessionPool(async () => fakeSession(), vi.fn())
+    pool.configure(modelsDir(), 'off')
+    await expect(pool.run('ocr', 'det.onnx', async () => Promise.reject(new Error('boom')))).rejects.toThrow(
+      'boom'
+    )
+  })
+})
+
+describe('SessionPool GPU memory', () => {
+  it('reports a model that failed on DirectML and loads remembered ones on CPU directly', async () => {
+    const providers: string[] = []
+    const create = vi.fn(async (_path: string, options: InferenceSession.SessionOptions) => {
+      providers.push(options.executionProviders?.includes('dml') ? 'dml' : 'cpu')
+      return fakeSession()
+    })
+    const onCpuOnly = vi.fn()
+    const dir = modelsDir()
+
+    const first = new SessionPool(create, vi.fn(), onCpuOnly)
+    await first.configure(dir, 'auto')
+    await first.run('ocr', 'det.onnx', async () => {
+      if (providers.at(-1) === 'dml') throw new Error('driver bug')
+      return 1
+    })
+    expect(onCpuOnly).toHaveBeenCalledWith('ocr/det.onnx')
+
+    providers.length = 0
+    const next = new SessionPool(create, vi.fn())
+    await next.configure(dir, 'auto', ['ocr/det.onnx'])
+    expect((await next.get('ocr', 'det.onnx')).provider).toBe('cpu')
+    expect(providers).toEqual(['cpu'])
+  })
+})

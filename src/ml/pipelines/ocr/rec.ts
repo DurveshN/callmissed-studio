@@ -52,6 +52,10 @@ export function buildRecBatch(crops: Rgba[]): {
 export interface Recognized {
   text: string
   confidence: number
+  /** Decoded characters (before normalization) with the output time step that produced each. */
+  chars: { ch: string; step: number }[]
+  /** Number of output time steps (spans the batch's padded input width). */
+  steps: number
 }
 
 /**
@@ -62,9 +66,8 @@ export function ctcDecode(probs: Float32Array, dims: readonly number[], dict: st
   const [batch, steps, classes] = dims as [number, number, number]
   const out: Recognized[] = []
   for (let n = 0; n < batch; n++) {
-    let text = ''
+    const chars: { ch: string; step: number }[] = []
     let confidence = 0
-    let kept = 0
     let previous = -1
     for (let t = 0; t < steps; t++) {
       const base = (n * steps + t) * classes
@@ -78,13 +81,52 @@ export function ctcDecode(probs: Float32Array, dims: readonly number[], dict: st
         }
       }
       if (best !== 0 && best !== previous) {
-        text += best <= dict.length ? (dict[best - 1] as string) : ' '
+        chars.push({ ch: best <= dict.length ? (dict[best - 1] as string) : ' ', step: t })
         confidence += bestP
-        kept++
       }
       previous = best
     }
-    out.push({ text: text.trim(), confidence: kept ? confidence / kept : 0 })
+    out.push({
+      text: normalizeText(chars.map((c) => c.ch).join('')),
+      confidence: chars.length ? confidence / chars.length : 0,
+      chars,
+      steps
+    })
   }
   return out
+}
+
+/** NFKC turns presentation forms (ligatures such as 'ﬂ', full-width letters) into plain text. */
+export function normalizeText(text: string): string {
+  return text.normalize('NFKC').replace(/ {2,}/g, ' ').trim()
+}
+
+/** A space needs an empty gap in the ink at least this wide (fraction of the ink height). */
+const MIN_SPACE_GAP = 0.12
+
+/**
+ * Removes recognized spaces that have no visible gap in the ink around them (e.g. the recognizer
+ * splitting a ligature: "fl ags"). `inkPerColumn` is ink coverage per column of the line crop.
+ */
+export function dropFalseSpaces(
+  read: Recognized,
+  layout: { batchWidth: number; scaledWidth: number; cropWidth: number; inkHeight: number },
+  inkPerColumn: Float32Array
+): string {
+  const toCrop = (step: number) =>
+    (((step + 0.5) / read.steps) * layout.batchWidth * layout.cropWidth) / layout.scaledWidth
+  const need = Math.max(1, layout.inkHeight * MIN_SPACE_GAP)
+  const kept = read.chars.filter(({ ch, step }) => {
+    if (ch !== ' ') return true
+    const x = toCrop(step)
+    const from = Math.max(0, Math.floor(x - layout.inkHeight * 0.6))
+    const to = Math.min(inkPerColumn.length - 1, Math.ceil(x + layout.inkHeight * 0.6))
+    let run = 0
+    for (let c = from; c <= to; c++) {
+      run = (inkPerColumn[c] as number) < 0.5 ? run + 1 : 0
+      if (run >= need) return true
+    }
+    return false
+  })
+  return normalizeText(kept.map((c) => c.ch).join(''))
 }

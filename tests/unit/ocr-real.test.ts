@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { containsPoint } from '../../src/ml/image/geometry'
 import { parseCharacterDict } from '../../src/ml/pipelines/ocr/dict'
-import { runOcr, type OcrLine } from '../../src/ml/pipelines/ocr/ocr'
+import { runOcr, sessionInfer, type OcrLine } from '../../src/ml/pipelines/ocr/ocr'
 import { inpaintTelea } from '../../src/ml/pipelines/inpaint/telea'
 import { textMask } from '../../src/ml/pipelines/inpaint/text-mask'
 import { ensureModelPack } from '../fixtures/models'
@@ -34,7 +34,7 @@ beforeAll(async () => {
   const dict = parseCharacterDict(readFileSync(join(root, 'ocr', 'rec.yml'), 'utf8'))
   lines = await runOcr(
     poster,
-    { det, rec, dict },
+    { det: sessionInfer(det), rec: sessionInfer(rec), dict },
     { progress: () => undefined, checkCancelled: () => undefined }
   )
 }, 120_000)

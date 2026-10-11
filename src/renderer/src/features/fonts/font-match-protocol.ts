@@ -3,13 +3,13 @@ export const TEXT_LINE_HEIGHT = 1.2
 
 export interface FontMatchRequest {
   text: string
-  /** Upright crop of the line: 255 = ink. */
+  /** Ink coverage of the upright line crop (0..255). */
   mask: Uint8Array
   width: number
   height: number
 }
 
-export interface FontMatchResult {
+export interface FontCandidate {
   family: string
   weight: number
   /** Font size in crop pixels. */
@@ -22,6 +22,11 @@ export interface FontMatchResult {
    */
   inkLeft: number
   inkTop: number
+}
+
+/** The best candidate, plus the top candidates in score order (for consistency across lines). */
+export interface FontMatchResult extends FontCandidate {
+  alternatives: FontCandidate[]
 }
 
 export type FontWorkerMessage =

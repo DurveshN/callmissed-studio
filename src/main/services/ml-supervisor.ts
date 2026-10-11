@@ -7,7 +7,10 @@ export interface MlSupervisorDeps {
   modelsDir: string
   packs: ModelPack[]
   gpu(): GpuMode
+  /** Model files known to fail on this GPU. */
+  cpuOnly(): string[]
   onGpuFailed(message: string): void
+  onGpuIncompatible(file: string): void
 }
 
 const MAX_RESTARTS = 5
@@ -45,6 +48,7 @@ export class MlSupervisor {
       type: 'configure',
       modelsDir: this.deps.modelsDir,
       gpu: this.deps.gpu(),
+      cpuOnly: this.deps.cpuOnly(),
       packs: this.deps.packs,
       requestId
     }))
@@ -97,6 +101,7 @@ export class MlSupervisor {
 
   private onNotice(notice: WorkerNotice): void {
     if (notice.type === 'gpu-failed') this.deps.onGpuFailed(notice.message)
+    if (notice.type === 'gpu-incompatible') this.deps.onGpuIncompatible(notice.file)
     if (notice.type === 'ack') {
       this.acks.get(notice.requestId)?.()
       this.acks.delete(notice.requestId)

@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import type { JobInput, JobResult } from '@shared/ml/jobs'
 import { throwIfCancelled } from '../job-queue'
 import { parseCharacterDict } from '../pipelines/ocr/dict'
-import { runOcr } from '../pipelines/ocr/ocr'
+import { runOcr, sessionInfer, type Infer } from '../pipelines/ocr/ocr'
 import type { HandlerContext } from './context'
 
 let dictionary: { path: string; dict: string[] } | null = null
@@ -13,15 +13,20 @@ async function loadDict(path: string): Promise<string[]> {
 }
 
 export async function ocr(input: JobInput<'ocr'>, ctx: HandlerContext): Promise<JobResult<'ocr'>> {
-  const [det, rec, dict] = await Promise.all([
-    ctx.pool.get('ocr', 'det.onnx'),
-    ctx.pool.get('ocr', 'rec.onnx'),
-    loadDict(ctx.pool.filePath('ocr', 'rec.yml'))
-  ])
+  const dict = await loadDict(ctx.pool.filePath('ocr', 'rec.yml'))
+  let provider: 'dml' | 'cpu' = 'cpu'
+  // Each model call goes through the pool so a DirectML failure falls back to CPU and retries.
+  const infer =
+    (file: string): Infer =>
+    async (data, dims) => {
+      const { result, provider: used } = await ctx.pool.run('ocr', file, (s) => sessionInfer(s)(data, dims))
+      if (file === 'det.onnx') provider = used
+      return result
+    }
   throwIfCancelled(ctx.signal)
   const lines = await runOcr(
     { width: input.width, height: input.height, data: input.pixels },
-    { det: det.session, rec: rec.session, dict },
+    { det: infer('det.onnx'), rec: infer('rec.onnx'), dict },
     { progress: ctx.progress, checkCancelled: () => throwIfCancelled(ctx.signal) }
   )
   return {
@@ -29,6 +34,6 @@ export async function ocr(input: JobInput<'ocr'>, ctx: HandlerContext): Promise<
       ...l,
       mask: { width: l.mask.width, height: l.mask.height, data: l.mask.data }
     })),
-    provider: det.provider
+    provider
   }
 }

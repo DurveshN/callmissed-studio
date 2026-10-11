@@ -46,13 +46,19 @@ CallMissed Studio — open-source (MIT) Windows Electron app: local OCR/segmenta
 - Bundled fonts are variable TTFs from google/fonts @ bd8f81d (`src/renderer/public/fonts/`); M5 PDF export must instance variable fonts for specific weights.
 - MessagePortMain cannot receive or send transferred ArrayBuffers: preload and worker post without transfer lists (a transfer list throws and, inside a promise, hung jobs silently — fixed).
 - Renderer mounts only after bundled fonts load; main queues `app:open-path` until `window:renderer-ready` (otherwise "Open with" at startup was lost).
+- **ML worker priority**: Chromium starts utility processes at background priority; on hybrid Intel CPUs Windows then runs them on efficiency cores (LaMa 20 s vs 3.4 s). `worker.ts` raises itself to `PRIORITY_NORMAL` at startup — keep this.
+- **DirectML run-time failures**: some models load on DML but fail while running (LaMa's FFT MatMul on Intel Iris Xe: `80070057 The parameter is incorrect`). `SessionPool.run()` reloads that file on CPU and retries; the file is persisted in `settings.gpuIncompatible` (cleared when GPU is turned back on). Packs with `"gpu": false` in the manifest (LaMa) never try DML — a failed DML attempt cost ~25–50 s.
+- **Inpainting plan** (`pipelines/inpaint/auto.ts`): mask split into clusters (≤320 px); flat surroundings (ring std < 10) → Telea (exact, instant), textured → LaMa on a local crop. Never one page-sized LaMa crop.
+- **OCR text**: every line is re-recognized as a whole after grouping (spaces from pixels); recognized spaces with no empty ink columns nearby are dropped (`dropFalseSpaces`, fixes ligature splits like "fl ags"); text is NFKC-normalized.
+- **Font choice is document-consistent** (`fonts/font-consensus.ts`): matcher returns top-8 candidates on soft ink coverage; lines grouped by color and by size measured in the best-supported reference family vote on a font; a line adopts it if within 15% of its own best score. Fixture `tests/fixtures/diagram.png`: all 32 lines Calibri Bold 26 / Calibri 22 exact.
+- ML errors carry a `code`; toasts show their message (`ui/notify.ts`).
 - GPU mode changes are acknowledged by the worker (`configure` + `ack`), `settings:update` awaits it, and `runJob` awaits any in-flight settings save.
 - Packaging: `electron-builder.yml` unpacks `onnxruntime-node` from asar and drops non-win-x64 binaries (verify in M7).
 
 ## Testing
 
-- `npm test` — Vitest unit (80 tests + 1 opt-in LaMa test via `STUDIO_TEST_LAMA=1`; real OCR models are downloaded once into `.cache/models`, SHA-256 verified): IPC contracts, CSP, protocol path guard, project zip, library DB, project service, document store, snapping, arrange, model manager (local HTTP server: resume, bad checksum, 404, cancel, version bump), session pool fallback, job queue, manifest pinning/licences, ONNX fixture.
-- `npm run test:e2e` — builds then Playwright drives Electron (26 tests, incl. Detect Text with real OCR models seeded via `seedModels`). Helpers in `tests/e2e/helpers.ts`: isolated profile via `STUDIO_USER_DATA`, `launchApp({ modelSetupDone })` seeds settings, dialog stubs, generated PNG/PDF fixtures, `closeApp()` force-exits (native unsaved-changes modal would hang the run). `tests/fixtures/onnx.ts` hand-encodes a tiny Identity ONNX model so model tests never hit the network.
+- `npm test` — Vitest unit (92 tests incl. opt-in LaMa test via `STUDIO_TEST_LAMA=1`; real OCR models are downloaded once into `.cache/models`, SHA-256 verified): IPC contracts, CSP, protocol path guard, project zip, library DB, project service, document store, snapping, arrange, model manager (local HTTP server: resume, bad checksum, 404, cancel, version bump), session pool fallback, job queue, manifest pinning/licences, ONNX fixture.
+- `npm run test:e2e` — builds then Playwright drives Electron (27 tests, incl. Detect Text with real OCR models seeded via `seedModels`). Helpers in `tests/e2e/helpers.ts`: isolated profile via `STUDIO_USER_DATA`, `launchApp({ modelSetupDone })` seeds settings, dialog stubs, generated PNG/PDF fixtures, `closeApp()` force-exits (native unsaved-changes modal would hang the run). `tests/fixtures/onnx.ts` hand-encodes a tiny Identity ONNX model so model tests never hit the network.
 
 ## Decisions log
 

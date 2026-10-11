@@ -4,6 +4,8 @@ export interface Word {
   text: string
   confidence: number
   rect: RotatedRect
+  /** Number of detected word boxes merged into this entry (1 for a single word). */
+  words?: number
 }
 
 /** Words join a line when they agree in angle and size, share a baseline and the gap is word-sized. */
@@ -66,6 +68,7 @@ export function groupLines(words: Word[]): Word[] {
     const chars = ordered.reduce((sum, w) => sum + w.text.length, 0)
     lines.push({
       text: ordered.map((w) => w.text).join(' '),
+      words: ordered.length,
       confidence: ordered.reduce((s, w) => s + w.confidence * w.text.length, 0) / Math.max(1, chars),
       rect: merged
     })

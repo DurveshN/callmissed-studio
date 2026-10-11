@@ -1,7 +1,7 @@
 import { InferenceSession } from 'onnxruntime-node'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { inpaintLama } from '../../src/ml/pipelines/inpaint/lama'
+import { inpaintLama, lamaInfer } from '../../src/ml/pipelines/inpaint/lama'
 import { textMask } from '../../src/ml/pipelines/inpaint/text-mask'
 import { ensureModelPack } from '../fixtures/models'
 import { readPng } from '../fixtures/png'
@@ -20,7 +20,7 @@ describe.runIf(process.env['STUDIO_TEST_LAMA'] === '1')('LaMa inpainting on the 
     const poster = readPng('tests/fixtures/ocr-poster.png')
     // "Open every day": white bold text on the blue-purple gradient.
     const rect = { cx: 319, cy: 561.5, width: 489, height: 78.6, angle: 0 }
-    const out = await inpaintLama(session, poster, textMask(poster, [rect]))
+    const out = await inpaintLama(lamaInfer(session), poster, textMask(poster, [rect]))
 
     // No white (text) pixels remain, and each erased pixel is close to the gradient just below the text.
     let worst = 0

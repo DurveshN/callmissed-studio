@@ -87,6 +87,7 @@
       "license": "Apache-2.0",
       "source": "https://huggingface.co/Carve/LaMa-ONNX",
       "version": "lama-fp32-1",
+      "gpu": false,
       "files": [
         {
           "name": "lama_fp32.onnx",
