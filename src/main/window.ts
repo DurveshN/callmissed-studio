@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import { BrowserWindow } from 'electron'
 import { APP_ORIGIN } from './app-protocol'
+import { resourcePath } from './paths'
 import { rendererOrigin } from './security'
 
 export function createMainWindow(): BrowserWindow {
@@ -11,6 +12,7 @@ export function createMainWindow(): BrowserWindow {
     minHeight: 600,
     show: false,
     title: 'CallMissed Studio',
+    icon: resourcePath('icon.png'),
     backgroundColor: '#f7f7f8',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
