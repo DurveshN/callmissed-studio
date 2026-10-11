@@ -14,6 +14,7 @@ import { MlError, runJob } from '../ml/ml-client'
 import { modelActions, useModelsStore } from '../models/models-store'
 import { selectActivePage, useDocumentStore } from '../document/store'
 import { cropPixels, currentTarget, encodePng, snapshot, type RasterSnapshot } from '../raster/raster-target'
+import { looksHandwritten } from './classify'
 import { getSnapshot, resetDetect, setSnapshot, useDetectStore, type DetectedLine } from './detect-store'
 
 let abort: AbortController | null = null
@@ -73,10 +74,19 @@ export async function detectText(): Promise<void> {
       { width: image.width, height: image.height, pixels: new Uint8Array(image.data.buffer.slice(0)) },
       { signal: abort.signal, onProgress: (progress) => useDetectStore.setState({ progress }) }
     )
-    const lines = result.lines.map((line) => ({
+    const detected: DetectedLine[] = result.lines.map((line) => ({
       ...line,
       id: crypto.randomUUID(),
-      corners: rectCorners(line.rect).map(snap.toPage)
+      corners: rectCorners(line.rect).map(snap.toPage),
+      handwriting: false
+    }))
+    // Font matching tells printed text from handwriting, so finish it before showing results.
+    useDetectStore.setState({ message: 'Analyzing fonts…', progress: 1 })
+    const fonts = await Promise.all(detected.map(matchFor))
+    if (abort.signal.aborted) return
+    const lines = detected.map((line, i) => ({
+      ...line,
+      handwriting: looksHandwritten(line.confidence, fonts[i] ?? null)
     }))
     useDetectStore.setState({
       status: 'ready',
@@ -84,8 +94,6 @@ export async function detectText(): Promise<void> {
       provider: result.provider,
       message: lines.length ? null : 'No text found here.'
     })
-    // Match fonts in the background so converting feels instant.
-    for (const line of lines) void matchFor(line)
   } catch (error) {
     if (error instanceof MlError && error.code === 'CANCELLED') return
     useDetectStore.setState({

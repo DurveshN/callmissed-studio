@@ -6,6 +6,8 @@ export interface DetectedLine extends OcrLine {
   id: string
   /** Corners of the line's box on the page (for the overlay). */
   corners: Point[]
+  /** Looks handwritten or unreliable: skipped by "Convert all", still convertible by clicking it. */
+  handwriting: boolean
 }
 
 export type DetectStatus = 'idle' | 'preparing' | 'detecting' | 'ready' | 'converting' | 'error'

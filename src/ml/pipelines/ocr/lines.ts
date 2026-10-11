@@ -39,12 +39,18 @@ function joinable(a: RotatedRect, b: RotatedRect): boolean {
  * Groups detected word boxes into text lines (single-linkage on `joinable`), orders words along
  * the reading direction and joins their text with spaces.
  */
-export function groupLines(words: Word[]): Word[] {
+export function groupLines(
+  words: Word[],
+  /** Words that must not be joined even when aligned (e.g. a table border between them). */
+  separated: (a: RotatedRect, b: RotatedRect) => boolean = () => false
+): Word[] {
   const parent = words.map((_, i) => i)
   const root = (i: number): number => (parent[i] === i ? i : (parent[i] = root(parent[i] as number)))
   for (let i = 0; i < words.length; i++) {
     for (let j = i + 1; j < words.length; j++) {
-      if (joinable((words[i] as Word).rect, (words[j] as Word).rect)) parent[root(j)] = root(i)
+      const a = (words[i] as Word).rect
+      const b = (words[j] as Word).rect
+      if (joinable(a, b) && !separated(a, b)) parent[root(j)] = root(i)
     }
   }
   const groups = new Map<number, Word[]>()

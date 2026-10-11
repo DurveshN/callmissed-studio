@@ -86,8 +86,17 @@ export function lamaInfer(session: InferenceSession): LamaInfer {
   }
 }
 
-/** Inpaints the masked pixels of `src` with LaMa using a context crop around the whole mask. */
-export async function inpaintLama(infer: LamaInfer, src: Rgba, mask: Gray): Promise<Rgba> {
+/**
+ * Inpaints the masked pixels of `src` with LaMa using a context crop around the whole mask.
+ * `holes` (default `mask`) marks every pixel the model must treat as unknown: other areas still to be
+ * erased inside the context crop would otherwise be copied into the fill (ghost letters).
+ */
+export async function inpaintLama(
+  infer: LamaInfer,
+  src: Rgba,
+  mask: Gray,
+  holes: Gray = mask
+): Promise<Rgba> {
   const bounds = maskBounds(mask)
   if (!bounds) return { ...src, data: src.data.slice() }
   const box = contextBox(bounds, src.width, src.height)
@@ -100,7 +109,7 @@ export async function inpaintLama(infer: LamaInfer, src: Rgba, mask: Gray): Prom
     for (let x = 0; x < w; x++) {
       const sx = Math.min(box.width - 1, Math.floor(((x + 0.5) * box.width) / w))
       const sy = Math.min(box.height - 1, Math.floor(((y + 0.5) * box.height) / h))
-      if (mask.data[(box.y + sy) * mask.width + box.x + sx]) m.data[y * SIZE + x] = 255
+      if (holes.data[(box.y + sy) * holes.width + box.x + sx]) m.data[y * SIZE + x] = 255
     }
   }
   const m512 = dilate(m, 1)

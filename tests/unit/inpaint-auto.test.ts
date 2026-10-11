@@ -31,6 +31,17 @@ describe('inpaint planning', () => {
     for (const b of boxes) expect(Math.max(b.x1 - b.x0, b.y1 - b.y0)).toBeLessThanOrEqual(320)
   })
 
+  it('tiles one long line and does not let it absorb the lines below', () => {
+    // A 1000 px line with short lines 20 px below each other under it.
+    const rects: [number, number, number, number][] = [[0, 0, 1000, 20]]
+    for (let i = 1; i < 30; i++) rects.push([0, i * 30, 200, i * 30 + 12])
+    const boxes = clusterMask(maskWith(1000, 920, rects))
+    for (const b of boxes) expect(Math.max(b.x1 - b.x0, b.y1 - b.y0)).toBeLessThanOrEqual(320)
+    // The line's tiles cover it exactly.
+    const lineTiles = boxes.filter((b) => b.y0 === 0)
+    expect(lineTiles.reduce((sum, b) => sum + b.x1 - b.x0, 0)).toBe(1000)
+  })
+
   it('recognizes flat and textured surroundings', () => {
     const flat = createRgba(60, 40)
     flat.data.fill(230)
@@ -53,5 +64,35 @@ describe('inpaint planning', () => {
     expect(usedLama).toBe(false)
     expect(lama).not.toHaveBeenCalled()
     expect(new Set(image.data)).toEqual(new Set([200, 255]))
+  })
+
+  it('hides text of neighbouring clusters from LaMa (no ghost letters copied into the fill)', async () => {
+    // A 700 px line split into clusters (MAX_CLUSTER_SIDE) on a textured background.
+    const img = createRgba(800, 60)
+    for (let i = 0; i < img.data.length; i++) img.data[i] = i % 4 === 3 ? 255 : (i * 97) % 256
+    const mask = maskWith(800, 60, [
+      [50, 20, 300, 40],
+      [310, 20, 560, 40],
+      [570, 20, 750, 40]
+    ])
+    expect(clusterMask(mask).length).toBeGreaterThan(1)
+    const seen: Float32Array[] = []
+    const lama = vi.fn(async (image: Float32Array, m: Float32Array) => {
+      seen.push(m)
+      return new Float32Array(image.length).fill(128)
+    })
+    await inpaintAuto(img, mask, lama, { progress: () => undefined, checkCancelled: () => undefined })
+    // Every masked pixel inside a context crop is a hole for the model, not just its own cluster's:
+    // a cluster alone covers ≤ 62.5% of its crop's width (context = 1.6×), its neighbours fill the rest.
+    expect(seen.length).toBeGreaterThan(1)
+    for (const m of seen) {
+      let widest = 0
+      for (let y = 0; y < 512; y++) {
+        let holes = 0
+        for (let x = 0; x < 512; x++) holes += m[y * 512 + x] as number
+        widest = Math.max(widest, holes)
+      }
+      expect(widest / 512).toBeGreaterThan(0.75)
+    }
   })
 })

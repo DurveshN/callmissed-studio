@@ -103,6 +103,8 @@ export function normalizeText(text: string): string {
 
 /** A space needs an empty gap in the ink at least this wide (fraction of the ink height). */
 const MIN_SPACE_GAP = 0.12
+/** A column with less than this share of a typical letter column's ink counts as empty. */
+const EMPTY_COLUMN = 0.15
 
 /**
  * Removes recognized spaces that have no visible gap in the ink around them (e.g. the recognizer
@@ -116,6 +118,11 @@ export function dropFalseSpaces(
   const toCrop = (step: number) =>
     (((step + 0.5) / read.steps) * layout.batchWidth * layout.cropWidth) / layout.scaledWidth
   const need = Math.max(1, layout.inkHeight * MIN_SPACE_GAP)
+  // "Empty" is relative to how much ink a letter column holds, so paper texture and camera noise in
+  // photos (a little ink in every gap) don't hide real spaces.
+  const inked = [...inkPerColumn].filter((v) => v >= 0.5).sort((x, y) => x - y)
+  const typical = inked[Math.floor(inked.length / 2)] ?? 0
+  const empty = Math.max(0.5, typical * EMPTY_COLUMN)
   const kept = read.chars.filter(({ ch, step }) => {
     if (ch !== ' ') return true
     const x = toCrop(step)
@@ -123,7 +130,7 @@ export function dropFalseSpaces(
     const to = Math.min(inkPerColumn.length - 1, Math.ceil(x + layout.inkHeight * 0.6))
     let run = 0
     for (let c = from; c <= to; c++) {
-      run = (inkPerColumn[c] as number) < 0.5 ? run + 1 : 0
+      run = (inkPerColumn[c] as number) < empty ? run + 1 : 0
       if (run >= need) return true
     }
     return false

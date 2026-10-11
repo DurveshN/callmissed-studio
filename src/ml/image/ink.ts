@@ -38,7 +38,8 @@ export function inkDistances(
   const rad = (rect.angle * Math.PI) / 180
   const cos = Math.cos(rad)
   const sin = Math.sin(rad)
-  const ring = Math.max(1, Math.round(sampleRect.height * 0.06))
+  // Wide enough that a thin rule crossing the band (a table border) cannot dominate its median.
+  const ring = Math.max(2, Math.round(sampleRect.height * 0.18))
   const half = Math.ceil(Math.max(rect.width, sampleRect.width) / 2)
   const bins = 2 * half + 1
   const top: number[][][] = Array.from({ length: bins }, () => [[], [], []])
@@ -123,6 +124,12 @@ function dist(a: Rgb, b: Rgb): number {
   return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])
 }
 
+/**
+ * Which connected ink regions to keep: all of them; 'glyphs' (drop anything touching the top/bottom
+ * band and horizontal rules — for measuring text); 'rules' (drop only thin, long lines — for erasing).
+ */
+export type InkFilter = 'none' | 'glyphs' | 'rules'
+
 export interface InkPixels {
   /** Indices of ink pixels. */
   indices: number[]
@@ -133,25 +140,26 @@ export interface InkPixels {
 }
 
 /**
- * Ink pixels inside `rect`: farther from the local background than the Otsu threshold. With
- * `dropEdgeComponents`, connected regions touching the rectangle's top or bottom band are removed:
- * glyphs sit inside the band, while background structures (panel borders, gradient boundaries) run into it.
+ * Ink pixels inside `rect`: farther from the local background than the Otsu threshold, with
+ * background structures removed according to `filter` (see InkFilter).
  */
 export function inkPixels(
   img: Rgba,
   rect: RotatedRect,
-  dropEdgeComponents: boolean,
+  filter: InkFilter,
   minThreshold = 24,
-  sampleRect: RotatedRect = rect
+  sampleRect: RotatedRect = rect,
+  /** Scales the Otsu threshold: below 1 also captures faint halos (used for erase masks). */
+  thresholdScale = 1
 ): InkPixels {
   const ink = inkDistances(img, rect, 3, sampleRect)
-  const threshold = Math.max(minThreshold, otsu(ink.distances))
+  const threshold = Math.max(minThreshold, otsu(ink.distances) * thresholdScale)
   const distances = new Map<number, number>()
   ink.indices.forEach((i, k) => {
     const d = ink.distances[k] as number
     if (d > threshold) distances.set(i, d)
   })
-  if (!dropEdgeComponents || distances.size === 0) {
+  if (filter === 'none' || distances.size === 0) {
     return { indices: [...distances.keys()], distances, threshold, background: ink.background }
   }
 
@@ -175,16 +183,43 @@ export function inkPixels(
   const rad = (rect.angle * Math.PI) / 180
   const sin = Math.sin(rad)
   const cos = Math.cos(rad)
-  const edge = rect.height / 2 - 1.5
+  const edgeV = rect.height / 2 - 1.5
+  const edgeU = rect.width / 2 - 1.5
   const kept: number[] = []
   for (const component of connectedComponents(local, w, h)) {
     const global = Array.from(component.pixels, (j) => (Math.floor(j / w) + y0) * img.width + (j % w) + x0)
-    const touches = global.some((i) => {
+    let touchesTopBottom = false
+    let touchesSide = false
+    let minU = Infinity
+    let maxU = -Infinity
+    let minV = Infinity
+    let maxV = -Infinity
+    for (const i of global) {
       const px = (i % img.width) + 0.5 - rect.cx
       const py = Math.floor(i / img.width) + 0.5 - rect.cy
-      return Math.abs(-px * sin + py * cos) > edge
-    })
-    if (!touches) kept.push(...global)
+      const u = px * cos + py * sin
+      const v = -px * sin + py * cos
+      if (Math.abs(v) > edgeV) touchesTopBottom = true
+      if (Math.abs(u) > edgeU) touchesSide = true
+      if (u < minU) minU = u
+      if (u > maxU) maxU = u
+      if (v < minV) minV = v
+      if (v > maxV) maxV = v
+    }
+    // A horizontal rule (table border, underline running off the box) enters from a side and is
+    // longer than the text is tall; glyphs never are.
+    const length = maxU - minU
+    const thickness = maxV - minV
+    const horizontalRule = touchesSide && length > rect.height * 1.2
+    if (filter === 'glyphs') {
+      if (!touchesTopBottom && !horizontalRule) kept.push(...global)
+    } else {
+      // Erasing keeps only genuine rules intact (thin and long); glyphs touching the box edge or a
+      // border must still be erased, or the fill would smear their remains (ghost letters).
+      const thinHorizontal = horizontalRule && thickness < rect.height * 0.3
+      const thinVertical = thickness > rect.height * 0.9 && length < rect.height * 0.2
+      if (!thinHorizontal && !thinVertical) kept.push(...global)
+    }
   }
   const keptSet = new Set(kept)
   for (const i of [...distances.keys()]) if (!keptSet.has(i)) distances.delete(i)

@@ -74,13 +74,14 @@ interface InkBox {
   height: number
 }
 
-function inkBox(req: FontMatchRequest): InkBox | null {
+/** Bounding box of ink, optionally limited to columns [from, to). */
+function inkBox(req: FontMatchRequest, from = 0, to = req.width): InkBox | null {
   let left = req.width
   let right = -1
   let top = req.height
   let bottom = -1
   for (let y = 0; y < req.height; y++) {
-    for (let x = 0; x < req.width; x++) {
+    for (let x = from; x < to; x++) {
       if (!req.mask[y * req.width + x]) continue
       if (x < left) left = x
       if (x > right) right = x
@@ -89,6 +90,115 @@ function inkBox(req: FontMatchRequest): InkBox | null {
     }
   }
   return right < 0 ? null : { left, top, width: right - left + 1, height: bottom - top + 1 }
+}
+
+/** A word of the line with its ink and target coverage at scoring resolution. */
+interface Piece {
+  text: string
+  box: InkBox
+  target: Float32Array
+  w: number
+  h: number
+}
+
+/**
+ * Splits the line's ink into `count` words at its `count - 1` widest gaps (relative, so it works for
+ * tight and for justified spacing). Null when there aren't enough gaps of plausible width.
+ */
+function wordSegments(req: FontMatchRequest, box: InkBox, count: number): [number, number][] | null {
+  const columns = new Float32Array(box.width)
+  for (let y = box.top; y < box.top + box.height; y++) {
+    for (let x = 0; x < box.width; x++) {
+      columns[x] = (columns[x] as number) + (req.mask[y * req.width + box.left + x] as number) / 255
+    }
+  }
+  const inked = [...columns].filter((v) => v > 0).sort((a, b) => a - b)
+  const empty = Math.max(0.3, (inked[Math.floor(inked.length / 2)] ?? 0) * 0.08)
+  const gaps: { start: number; length: number }[] = []
+  for (let x = 0; x < box.width;) {
+    if ((columns[x] as number) >= empty) {
+      x++
+      continue
+    }
+    const start = x
+    while (x < box.width && (columns[x] as number) < empty) x++
+    gaps.push({ start, length: x - start })
+  }
+  const minGap = Math.max(2, box.height * 0.12)
+  const cuts = gaps
+    .sort((a, b) => b.length - a.length)
+    .slice(0, count - 1)
+    .filter((g) => g.length >= minGap)
+  if (cuts.length !== count - 1) return null
+  cuts.sort((a, b) => a.start - b.start)
+  const segments: [number, number][] = []
+  let from = 0
+  for (const cut of cuts) {
+    segments.push([box.left + from, box.left + cut.start])
+    from = cut.start + cut.length
+  }
+  segments.push([box.left + from, box.left + box.width])
+  return segments
+}
+
+/**
+ * Words matched separately when the ink splits into as many words as the text has: justified or
+ * letter-spaced text has gaps no single-string rendering reproduces. Otherwise the whole line.
+ */
+function layoutsOf(req: FontMatchRequest, box: InkBox, scale: number): Piece[][] {
+  const make = (text: string, b: InkBox): Piece => {
+    const w = Math.max(4, Math.round(b.width * scale))
+    const h = Math.max(4, Math.round(b.height * scale))
+    return { text, box: b, target: targetCoverage(req, b, w, h), w, h }
+  }
+  const layouts: Piece[][] = [[make(req.text, box)]]
+  const words = req.text.split(/\s+/).filter(Boolean)
+  if (words.length > 1) {
+    const segments = wordSegments(req, box, words.length)
+    const boxes = segments?.map(([from, to]) => inkBox(req, from, to)) ?? []
+    if (segments && boxes.every((b) => b !== null))
+      layouts.push(words.map((word, i) => make(word, boxes[i] as InkBox)))
+  }
+  return layouts
+}
+
+/** Width-weighted overlap score and font size (crop px) of rendering `pieces` in a font. */
+function scoreLayout(
+  probe: OffscreenCanvasRenderingContext2D,
+  css: (size: number) => string,
+  pieces: Piece[]
+): { score: number; size: number } | null {
+  const totalWidth = pieces.reduce((sum, p) => sum + p.w, 0)
+  let score = 0
+  let size = 0
+  for (const piece of pieces) {
+    probe.font = css(100)
+    const m = probe.measureText(piece.text)
+    const inkW = m.actualBoundingBoxLeft + m.actualBoundingBoxRight
+    const inkH = m.actualBoundingBoxAscent + m.actualBoundingBoxDescent
+    if (inkW <= 0 || inkH <= 0) return null
+    // Fit ink width; disagreement in ink height reveals a wrong typeface (e.g. condensed vs wide).
+    const s = piece.w / inkW
+    const heightError = Math.abs(inkH * s - piece.h) / piece.h
+    const ctx = context(piece.w, piece.h)
+    ctx.font = css(100 * s)
+    ctx.fillStyle = '#000'
+    ctx.textBaseline = 'alphabetic'
+    ctx.fillText(piece.text, m.actualBoundingBoxLeft * s, m.actualBoundingBoxAscent * s)
+    const rendered = ctx.getImageData(0, 0, piece.w, piece.h).data
+    let inter = 0
+    let union = 0
+    for (let i = 0; i < piece.target.length; i++) {
+      const a = piece.target[i] as number
+      const b = (rendered[i * 4 + 3] as number) / 255
+      inter += Math.min(a, b)
+      union += Math.max(a, b)
+    }
+    const share = piece.w / totalWidth
+    score += share * ((union ? inter / union : 0) - 0.6 * Math.min(1, heightError))
+    size += share * ((100 * piece.box.width) / inkW)
+  }
+  return { score, size }
 }
 
 /** Weights worth trying for a family: regular and bold where available, else what exists. */
@@ -107,48 +217,28 @@ function match(req: FontMatchRequest): FontMatchResult | null {
   const box = inkBox(req)
   if (!box || !req.text.trim()) return null
   const scale = Math.min(1, SCORE_HEIGHT / box.height)
-  const w = Math.max(4, Math.round(box.width * scale))
-  const h = Math.max(4, Math.round(box.height * scale))
-  const target = targetCoverage(req, box, w, h)
-  const ctx = context(w, h)
+  // The whole line, and (when the ink splits into the text's words) each word separately; the better
+  // of the two counts, so neither justified spacing nor a misread space ruins a match.
+  const layouts = layoutsOf(req, box, scale)
   const probe = context(8, 8)
 
-  const scored: { family: string; weight: number; fontSize: number; score: number }[] = []
+  type Scored = { family: string; weight: number; fontSize: number; score: number }
+  const perLayout: Scored[][] = layouts.map(() => [])
+  const hasLowercase = /\p{Ll}/u.test(req.text)
   for (const font of usable) {
+    if (font.capsOnly && hasLowercase) continue
     for (const weight of candidateWeights(font)) {
       const css = (size: number) => `${weight} ${size}px "${font.family}"`
-      probe.font = css(100)
-      const m = probe.measureText(req.text)
-      const inkW = m.actualBoundingBoxLeft + m.actualBoundingBoxRight
-      const inkH = m.actualBoundingBoxAscent + m.actualBoundingBoxDescent
-      if (inkW <= 0 || inkH <= 0) continue
-
-      // Fit ink width; disagreement in ink height reveals a wrong typeface (e.g. condensed vs wide).
-      const s = w / inkW
-      const heightError = Math.abs(inkH * s - h) / h
-      if (heightError > 0.6) continue
-      ctx.clearRect(0, 0, w, h)
-      ctx.font = css(100 * s)
-      ctx.fillStyle = '#000'
-      ctx.textBaseline = 'alphabetic'
-      ctx.fillText(req.text, m.actualBoundingBoxLeft * s, m.actualBoundingBoxAscent * s)
-      const rendered = ctx.getImageData(0, 0, w, h).data
-      let inter = 0
-      let union = 0
-      for (let i = 0; i < target.length; i++) {
-        const a = target[i] as number
-        const b = (rendered[i * 4 + 3] as number) / 255
-        inter += Math.min(a, b)
-        union += Math.max(a, b)
-      }
-      scored.push({
-        family: font.family,
-        weight,
-        fontSize: (100 * box.width) / inkW,
-        score: (union ? inter / union : 0) - 0.6 * heightError
+      layouts.forEach((layout, k) => {
+        const result = scoreLayout(probe, css, layout)
+        if (result)
+          perLayout[k]?.push({ family: font.family, weight, fontSize: result.size, score: result.score })
       })
     }
   }
+  // One layout per line (the one whose best font fits best), so all fonts are compared on equal terms.
+  const top = (list: Scored[]) => Math.max(-Infinity, ...list.map((c) => c.score))
+  const scored = perLayout.reduce((best, list) => (top(list) > top(best) ? list : best), [] as Scored[])
   if (scored.length === 0) return null
   scored.sort((a, b) => b.score - a.score)
 

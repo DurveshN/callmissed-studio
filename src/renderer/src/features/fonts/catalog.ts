@@ -12,6 +12,8 @@ export interface FontFamily {
   category: FontCategory
   /** Bundled (OFL, always available) or a font that ships with Windows 10/11. */
   source: 'bundled' | 'system'
+  /** Has no lowercase letters (lowercase input renders as capitals), so it can't match mixed-case text. */
+  capsOnly?: boolean
   files: FontFile[]
 }
 
@@ -39,7 +41,10 @@ export const BUNDLED_FONTS: FontFamily[] = [
   ]),
   bundled('Raleway', 'sans', [{ path: 'fonts/raleway/Raleway[wght].ttf', weight: [100, 900] }]),
   bundled('Oswald', 'display', [{ path: 'fonts/oswald/Oswald[wght].ttf', weight: [200, 700] }]),
-  bundled('Bebas Neue', 'display', [{ path: 'fonts/bebasneue/BebasNeue-Regular.ttf', weight: 400 }]),
+  {
+    ...bundled('Bebas Neue', 'display', [{ path: 'fonts/bebasneue/BebasNeue-Regular.ttf', weight: 400 }]),
+    capsOnly: true
+  },
   bundled('Anton', 'display', [{ path: 'fonts/anton/Anton-Regular.ttf', weight: 400 }]),
   bundled('Merriweather', 'serif', [
     { path: 'fonts/merriweather/Merriweather[opsz,wdth,wght].ttf', weight: [300, 900] }

@@ -6,7 +6,7 @@ import { inpaintTelea } from './telea'
 
 /** Masked areas closer than this (px) are inpainted together. */
 const JOIN_DISTANCE = 24
-/** A cluster stops growing once its box would exceed this side (keeps LaMa's 512 input near 1:1). */
+/** Clusters stay within this side, larger areas are tiled (keeps LaMa's 512 input near 1:1). */
 const MAX_CLUSTER_SIDE = 320
 /** Background whose surrounding ring varies less than this (per-channel std, 0..255) counts as flat. */
 const FLAT_STD = 10
@@ -22,7 +22,6 @@ interface Box {
   y1: number
 }
 
-const side = (b: Box) => Math.max(b.x1 - b.x0, b.y1 - b.y0)
 const union = (a: Box, b: Box): Box => ({
   x0: Math.min(a.x0, b.x0),
   y0: Math.min(a.y0, b.y0),
@@ -54,7 +53,12 @@ export function clusterMask(mask: Gray): Box[] {
         const a = boxes[i] as Box
         const b = boxes[j] as Box
         const joined = union(a, b)
-        if (near(a, b) && (side(joined) <= MAX_CLUSTER_SIDE || side(joined) <= Math.max(side(a), side(b)))) {
+        // Each dimension stays within the cap or the larger part's own extent (a long line may stay
+        // wide, but never grows tall by absorbing the lines below it).
+        const fits =
+          joined.x1 - joined.x0 <= Math.max(MAX_CLUSTER_SIDE, a.x1 - a.x0, b.x1 - b.x0) &&
+          joined.y1 - joined.y0 <= Math.max(MAX_CLUSTER_SIDE, a.y1 - a.y0, b.y1 - b.y0)
+        if (near(a, b) && fits) {
           boxes[i] = joined
           boxes.splice(j, 1)
           merged = true
@@ -62,7 +66,25 @@ export function clusterMask(mask: Gray): Box[] {
       }
     }
   }
-  return boxes
+  return boxes.flatMap(tiles)
+}
+
+/** Splits a box larger than the cap (e.g. one long line) into equal tiles within it. */
+function tiles(box: Box): Box[] {
+  const nx = Math.ceil((box.x1 - box.x0) / MAX_CLUSTER_SIDE)
+  const ny = Math.ceil((box.y1 - box.y0) / MAX_CLUSTER_SIDE)
+  const out: Box[] = []
+  for (let j = 0; j < ny; j++) {
+    for (let i = 0; i < nx; i++) {
+      out.push({
+        x0: box.x0 + Math.round(((box.x1 - box.x0) * i) / nx),
+        y0: box.y0 + Math.round(((box.y1 - box.y0) * j) / ny),
+        x1: box.x0 + Math.round(((box.x1 - box.x0) * (i + 1)) / nx),
+        y1: box.y0 + Math.round(((box.y1 - box.y0) * (j + 1)) / ny)
+      })
+    }
+  }
+  return out
 }
 
 /** Whether the pixels surrounding the masked area (within `box`) are a near-uniform color. */
@@ -106,8 +128,11 @@ function cropMask(mask: Gray, box: Box): Gray {
   return out
 }
 
-/** Telea restricted to a crop around the cluster (fast even on large pages). */
-function teleaInBox(img: Rgba, mask: Gray, box: Box): Rgba {
+/**
+ * Telea restricted to a crop around the cluster (fast even on large pages). Every pixel of `holes` is
+ * unknown, so neighbouring text still to be erased doesn't bleed in; only `part` is written back.
+ */
+function teleaInBox(img: Rgba, holes: Gray, part: Gray, box: Box): Rgba {
   const x0 = Math.max(0, box.x0 - TELEA_MARGIN)
   const y0 = Math.max(0, box.y0 - TELEA_MARGIN)
   const x1 = Math.min(img.width, box.x1 + TELEA_MARGIN)
@@ -117,15 +142,17 @@ function teleaInBox(img: Rgba, mask: Gray, box: Box): Rgba {
   for (let y = y0; y < y1; y++) {
     const row = (y * img.width + x0) * 4
     crop.data.set(img.data.subarray(row, row + crop.width * 4), (y - y0) * crop.width * 4)
-    for (let x = x0; x < x1; x++) m[(y - y0) * crop.width + x - x0] = mask.data[y * mask.width + x] as number
+    for (let x = x0; x < x1; x++)
+      m[(y - y0) * crop.width + x - x0] = holes.data[y * holes.width + x] as number
   }
   const filled = inpaintTelea(crop, m)
   const out = { ...img, data: img.data.slice() }
   for (let y = y0; y < y1; y++) {
-    out.data.set(
-      filled.data.subarray((y - y0) * crop.width * 4, (y - y0 + 1) * crop.width * 4),
-      (y * img.width + x0) * 4
-    )
+    for (let x = x0; x < x1; x++) {
+      if (!part.data[y * part.width + x]) continue
+      const s = ((y - y0) * crop.width + x - x0) * 4
+      out.data.set(filled.data.subarray(s, s + 4), (y * img.width + x) * 4)
+    }
   }
   return out
 }
@@ -148,10 +175,10 @@ export async function inpaintAuto(
     const part = cropMask(mask, box)
     const flat = isFlatBackground(out, part, box)
     if (lama && !flat) {
-      out = await inpaintLama(lama, out, part)
+      out = await inpaintLama(lama, out, part, mask)
       usedLama = true
     } else {
-      out = teleaInBox(out, part, box)
+      out = teleaInBox(out, mask, part, box)
     }
     hooks.progress((n + 1) / clusters.length)
   }
