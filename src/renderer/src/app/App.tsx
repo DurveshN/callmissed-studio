@@ -4,6 +4,7 @@ import { useDocumentStore } from '../features/document/store'
 import { EditorScreen } from '../features/editor/EditorScreen'
 import { startAutosave } from '../features/session/autosave'
 import { StartScreen } from '../features/start/StartScreen'
+import { ContextMenu } from '../ui/ContextMenu'
 import { ConfirmDialog, Toaster } from '../ui/Overlays'
 import { ErrorBoundary } from './ErrorBoundary'
 import styles from './App.module.css'
@@ -59,6 +60,7 @@ export function App() {
     <ErrorBoundary>
       {hasDocument ? <EditorScreen /> : <StartScreen />}
       {dropping && <div className={styles.dropOverlay}>Drop to open</div>}
+      <ContextMenu />
       <ConfirmDialog />
       <Toaster />
     </ErrorBoundary>

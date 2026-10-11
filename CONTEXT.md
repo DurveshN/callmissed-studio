@@ -9,6 +9,7 @@ CallMissed Studio — open-source (MIT) Windows Electron app: local OCR/segmenta
 - M0 foundation done (tag `m0-foundation`).
 - Branding: app icon chosen (`resources/branding/app-icon-source.png`, option B2). Rebuild derived icons with `python tools/branding/build_icons.py`.
 - **M1 shell done** (tag `m1-shell`): start screen (open, drop, recents, crash recovery), Canva-style editor (top bar, canvas, Inspector/Layers/Pages tabs), Select/Hand/Text/Rect/Ellipse/Line/Insert image, transform + snapping + marquee, undo/redo (persisted), `.cmsp` save/open, autosave, export PNG/JPEG/WebP, unsaved-changes guards.
+- Arrange (bring to front / forward / send backward / to back) via right-click menu on canvas + layer rows and Inspector "Arrange" section (`features/arrange/`). Background always stays bottom-most.
 - Next: M2 ML foundation (utilityProcess worker, ONNX Runtime, ModelManager + setup screen).
 
 ## Pinned toolchain (compatibility-constrained)
@@ -34,8 +35,8 @@ CallMissed Studio — open-source (MIT) Windows Electron app: local OCR/segmenta
 
 ## Testing
 
-- `npm test` — Vitest unit (37 tests): IPC contracts, CSP, protocol path guard, project zip, library DB, project service (open/save/recover), document store (undo/coalesce/order), snapping.
-- `npm run test:e2e` — builds then Playwright drives Electron (13 tests). Helpers in `tests/e2e/helpers.ts`: isolated profile via `STUDIO_USER_DATA`, dialog stubs, generated PNG/PDF fixtures, `closeApp()` force-exits (native unsaved-changes modal would hang the run).
+- `npm test` — Vitest unit (41 tests): IPC contracts, CSP, protocol path guard, project zip, library DB, project service (open/save/recover), document store (undo/coalesce/order), snapping.
+- `npm run test:e2e` — builds then Playwright drives Electron (14 tests). Helpers in `tests/e2e/helpers.ts`: isolated profile via `STUDIO_USER_DATA`, dialog stubs, generated PNG/PDF fixtures, `closeApp()` force-exits (native unsaved-changes modal would hang the run).
 
 ## Decisions log
 

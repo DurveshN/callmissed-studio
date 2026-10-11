@@ -2,6 +2,8 @@ import { useShallow } from 'zustand/react/shallow'
 import { AlignCenter, AlignLeft, AlignRight, Italic } from 'lucide-react'
 import type { Layer, ShapeLayer, TextLayer } from '@shared/document/model'
 import { deleteLayers, renameDocument, updateLayer } from '../document/layer-ops'
+import { ARRANGE_ACTIONS, arrange, canArrange } from '../arrange/arrange'
+import { ArrangeIcon } from '../arrange/ArrangeIcon'
 import { SYSTEM_FONTS } from '../document/factories'
 import { selectActivePage, selectSelectedLayers, useDocumentStore } from '../document/store'
 import { ColorField, Field, NumberField } from '../../ui/fields'
@@ -250,6 +252,29 @@ function DocumentSection() {
   )
 }
 
+function ArrangeSection({ ids }: { ids: string[] }) {
+  const layers = useDocumentStore((s) => selectActivePage(s)?.layers) ?? []
+  return (
+    <section className={styles.section}>
+      <h3 className={styles.heading}>Arrange</h3>
+      <div className={styles.row}>
+        {ARRANGE_ACTIONS.map(({ action, label, shortcut }) => (
+          <button
+            key={action}
+            className={ui.iconButton}
+            aria-label={label}
+            title={`${label} (${shortcut})`}
+            disabled={!canArrange(layers, ids, action)}
+            onClick={() => arrange(ids, action)}
+          >
+            <ArrangeIcon action={action} />
+          </button>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 export function InspectorPanel() {
   const selected = useDocumentStore(useShallow(selectSelectedLayers))
   const layer = selected.length === 1 ? selected[0] : undefined
@@ -263,6 +288,7 @@ export function InspectorPanel() {
             Delete selected
           </button>
         </section>
+        <ArrangeSection ids={selected.map((l) => l.id)} />
       </div>
     )
   }
@@ -271,6 +297,7 @@ export function InspectorPanel() {
     <div className={styles.panel} data-testid="inspector">
       {!layer && <DocumentSection />}
       {layer && <GeometrySection layer={layer} />}
+      {layer && <ArrangeSection ids={[layer.id]} />}
       {layer?.type === 'text' && <TextSection layer={layer} />}
       {layer?.type === 'shape' && <ShapeSection layer={layer} />}
     </div>

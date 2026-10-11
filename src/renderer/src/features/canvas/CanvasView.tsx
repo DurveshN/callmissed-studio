@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Ellipse, Group, Layer as KonvaLayer, Line, Rect, Stage, Transformer } from 'react-konva'
 import { useShallow } from 'zustand/react/shallow'
 import type { Layer } from '@shared/document/model'
+import { openLayerMenu } from '../arrange/layer-menu'
 import { addLayer, updateLayers } from '../document/layer-ops'
 import { newShapeLayer, newTextLayer } from '../document/factories'
 import { selectActivePage, useDocumentStore } from '../document/store'
@@ -332,6 +333,12 @@ export function CanvasView() {
     return () => window.removeEventListener('mouseup', up)
   })
 
+  const onContextMenu = (e: Konva.KonvaEventObject<PointerEvent>) => {
+    e.evt.preventDefault()
+    const group = layerGroupOf(e.target)
+    if (group && tool === 'select') openLayerMenu(e.evt.clientX, e.evt.clientY, group.id())
+  }
+
   const onWheel = (e: Konva.KonvaEventObject<WheelEvent>) => {
     e.evt.preventDefault()
     const vp = useViewportStore.getState()
@@ -369,6 +376,7 @@ export function CanvasView() {
         onMouseMove={onMouseMove}
         onMouseUp={finishDrag}
         onWheel={onWheel}
+        onContextMenu={onContextMenu}
       >
         <KonvaLayer listening={false}>
           <Rect

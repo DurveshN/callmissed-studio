@@ -1,6 +1,7 @@
 import { Eye, EyeOff, Image as ImageIcon, Lock, Shapes, Trash2, Type, Unlock } from 'lucide-react'
 import { useState } from 'react'
 import type { Layer } from '@shared/document/model'
+import { openLayerMenu } from '../arrange/layer-menu'
 import { deleteLayers, moveLayer, updateLayer } from '../document/layer-ops'
 import { selectActivePage, useDocumentStore } from '../document/store'
 import ui from '../../ui/ui.module.css'
@@ -33,6 +34,10 @@ function LayerRow({ layer, index, selected }: { layer: Layer; index: number; sel
         setDropTarget(false)
         const id = e.dataTransfer.getData('text/x-layer-id')
         if (id && id !== layer.id) moveLayer(id, index)
+      }}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        openLayerMenu(e.clientX, e.clientY, layer.id)
       }}
       onClick={(e) => {
         if (e.shiftKey || e.ctrlKey) {

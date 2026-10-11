@@ -73,6 +73,31 @@ test('draws a rectangle, then undo and redo it', async () => {
   await expect(await layerRows(window)).toHaveCount(2)
 })
 
+test('arranges layers from the layer menu, the canvas menu and the inspector', async () => {
+  const rows = await layerRows(window)
+  // Panel lists top-most first: the rectangle was drawn after the text.
+  await expect(rows.first()).toContainText('Rectangle')
+
+  await rows.filter({ hasText: 'Hello Studio' }).click({ button: 'right' })
+  const menu = window.getByRole('menu')
+  await expect(menu.getByRole('menuitem', { name: /Send to back/ })).toBeDisabled()
+  await menu.getByRole('menuitem', { name: /Bring to front/ }).click()
+  await expect(menu).toBeHidden()
+  await expect(rows.first()).toContainText('Hello Studio')
+
+  // Right-click the rectangle on the canvas (drawn from 100,100 to 220,180).
+  const box = await canvasBox(window)
+  await window.mouse.click(box.x + 160, box.y + 140, { button: 'right' })
+  await window.getByRole('menuitem', { name: /Bring forward/ }).click()
+  await expect(rows.first()).toContainText('Rectangle')
+
+  await rows.filter({ hasText: 'Hello Studio' }).click()
+  await window.getByRole('tab', { name: 'Inspector' }).click()
+  await window.getByRole('button', { name: 'Bring to front' }).click()
+  await expect(window.getByRole('button', { name: 'Bring to front' })).toBeDisabled()
+  await expect((await layerRows(window)).first()).toContainText('Hello Studio')
+})
+
 test('edits a property in the inspector', async () => {
   await (await layerRows(window)).filter({ hasText: 'Hello Studio' }).click()
   await window.getByRole('tab', { name: 'Inspector' }).click()
