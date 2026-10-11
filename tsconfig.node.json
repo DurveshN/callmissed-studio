@@ -9,8 +9,8 @@
     "vitest.config.ts",
     "playwright.config.ts",
     "src/main/**/*",
+    "tools/vite/**/*",
     "src/preload/**/*",
-    "src/shared/**/*",
-    "tests/**/*"
+    "src/shared/**/*"
   ]
 }

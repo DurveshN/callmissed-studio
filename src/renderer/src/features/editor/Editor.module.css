@@ -1,0 +1,122 @@
+.editor {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  grid-template-rows: 52px 1fr;
+  grid-template-areas:
+    'top top'
+    'canvas panel';
+  height: 100%;
+}
+
+.topBar {
+  grid-area: top;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.brandMark {
+  width: 22px;
+  height: 22px;
+  margin-right: var(--space-2);
+  border-radius: 6px;
+  background: var(--brand-gradient);
+  flex: none;
+}
+
+.docName {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 260px;
+  margin-left: var(--space-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.dirtyDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: none;
+}
+
+.divider {
+  width: 1px;
+  height: 20px;
+  margin: 0 var(--space-2);
+  background: var(--border);
+}
+
+.zoomValue {
+  min-width: 52px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.zoomValue:hover {
+  background: var(--hover);
+}
+
+.workspace {
+  grid-area: canvas;
+  min-width: 0;
+  min-height: 0;
+}
+
+.rightPanel {
+  grid-area: panel;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.tabs {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.tab[aria-selected='true'] {
+  border-bottom-color: var(--accent);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.tabBody {
+  flex: 1;
+  overflow-y: auto;
+}

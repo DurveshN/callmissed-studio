@@ -5,6 +5,7 @@ crops to the artwork and writes:
   build/icon.ico   multi-size Windows icon (used by electron-builder)
   build/icon.png   1024 px
   resources/icon.png  512 px (window/taskbar icon at runtime)
+  src/renderer/public/icon.png  256 px (shown inside the UI)
 
 Usage: python tools/branding/build_icons.py
 """
@@ -73,7 +74,9 @@ def main() -> None:
     icon.resize((256, 256), Image.LANCZOS).save(
         ROOT / "build/icon.ico", sizes=[(s, s) for s in ICO_SIZES]
     )
-    print("Wrote build/icon.ico, build/icon.png, resources/icon.png")
+    (ROOT / "src/renderer/public").mkdir(parents=True, exist_ok=True)
+    icon.resize((256, 256), Image.LANCZOS).save(ROOT / "src/renderer/public/icon.png", optimize=True)
+    print("Wrote build/icon.ico, build/icon.png, resources/icon.png, src/renderer/public/icon.png")
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ import { defineConfig } from 'electron-vite'
 import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { contentSecurityPolicy } from './src/shared/csp'
+import { pdfjsAssets } from './tools/vite/pdfjs-assets'
 
 const shared = resolve(__dirname, 'src/shared')
 
@@ -40,6 +41,6 @@ export default defineConfig({
         '@renderer': resolve(__dirname, 'src/renderer/src')
       }
     },
-    plugins: [react(), csp()]
+    plugins: [react(), csp(), pdfjsAssets(__dirname)]
   }
 })

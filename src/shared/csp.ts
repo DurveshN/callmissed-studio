@@ -5,7 +5,10 @@
 export function contentSecurityPolicy(isDev: boolean): string {
   const directives: Record<string, string[]> = {
     'default-src': ["'self'"],
-    'script-src': isDev ? ["'self'", "'unsafe-inline'"] : ["'self'"],
+    // pdf.js compiles WebAssembly image decoders (JPX/JBIG2), hence wasm-unsafe-eval.
+    'script-src': isDev
+      ? ["'self'", "'unsafe-inline'", "'wasm-unsafe-eval'"]
+      : ["'self'", "'wasm-unsafe-eval'"],
     'style-src': ["'self'", "'unsafe-inline'"],
     'img-src': ["'self'", 'data:', 'blob:'],
     'font-src': ["'self'", 'data:'],

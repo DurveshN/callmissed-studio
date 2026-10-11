@@ -41,7 +41,7 @@ Versions are the research snapshot of 2026-10-11 and are re-verified at install 
 | ML | onnxruntime-node (DirectML EP → CPU EP), `@techstark/opencv-js` (contours, Telea inpaint) |
 | Models | PP-OCRv5 det + English rec, SAM 2.1 tiny (MobileSAM fallback), LaMa, BiRefNet_lite |
 | PDF | `pdfjs-dist` (render, text content), `@cantoo/pdf-lib` + `@pdf-lib/fontkit` (write) |
-| Storage | `better-sqlite3`, `fflate` (zip), Electron `safeStorage` |
+| Storage | `node:sqlite` (built into Electron's Node 24; no native module), `fflate` (zip), Electron `safeStorage` |
 | Logging | electron-log (API key scrubbed) |
 | Tests | Vitest, Playwright (`_electron`) |
 | CI | GitHub Actions `windows-latest` |
@@ -71,7 +71,7 @@ src/
     ipc/router.ts    registers handlers; one file per domain under ipc/
     services/
       project-service.ts    .cmsp read/write, atomic save, autosave, recovery
-      library-db.ts         better-sqlite3 + migrations
+      library-db.ts         node:sqlite + migrations (PRAGMA user_version)
       secret-store.ts       safeStorage key storage
       callmissed-client.ts  generations, models, history; error mapping; cancel
       model-manager.ts      manifest, download (resume), sha256, install state
@@ -149,15 +149,15 @@ PNG / JPEG / WebP at chosen scale for a page or a selected layer; PDF as above.
 ```
 manifest.json        { format: "cmsp", schemaVersion: 1, appVersion, createdAt, updatedAt }
 document.json
-source/original.<ext>
-bitmaps/<id>.png
+history.json         undo/redo stacks (Immer patches)
+assets/<id>.<ext>       original source file, imported images, patches, cutouts
 generations/<id>.png
 generations.json
 thumbnail.png
 ```
 
 - Atomic save: write `<file>.tmp` then rename.
-- Autosave 2 s after the last change to `userData/autosave/<docId>/`; recovery prompt on next launch after an unclean exit.
+- Each open document has a workspace folder `userData/workspaces/<docId>/` (assets written once on creation, `document.json` + `history.json` autosaved 2 s after the last change). Save zips the workspace into the `.cmsp`. Clean exit deletes workspaces; leftovers (crash, renderer reload) are offered for recovery on the start screen.
 - `schemaVersion` + ordered migration functions on load.
 
 ### 5.2 App data (`%APPDATA%/CallMissed Studio/`)
@@ -168,7 +168,7 @@ thumbnail.png
 | `secrets.bin` | CallMissed API key encrypted with `safeStorage` |
 | `library.db` | SQLite, tables below |
 | `models/` | installed ONNX files + `installed.json` |
-| `autosave/` | crash recovery |
+| `workspaces/` | per-document working copies (autosave / crash recovery) |
 | `logs/` | rotating logs |
 
 Tables: `schema_migrations`, `projects(id, path, name, thumbnail, last_opened_at)`, `generations(id, project_id, remote_id, model, prompt, size, n_index, seed, revised_prompt, credits, status, error_code, file_path, created_at)`, `api_calls(id, endpoint, model, http_status, error_code, credits, latency_ms, created_at)`.
@@ -245,10 +245,10 @@ Each milestone is complete, tested, committed and tagged before the next starts.
 | # | Tag | Scope | Done when |
 |---|---|---|---|
 | M0 | `m0-foundation` | repo, tooling, lint/test, CI, spec + research | `npm run dev` opens secure empty window; CI green |
-| M1 | `m1-shell` | layout B, open image/PDF, canvas zoom/pan, layers panel, undo/redo, `.cmsp` save/load, autosave, PNG/JPG export, app icon | project round-trips losslessly |
+| M1 | `m1-shell` | layout B, open image/PDF (drop, dialog, Open with), canvas zoom/pan/snapping, Select/Move, Add Text, Shapes, Insert Image, layers panel, inspector, pages panel, undo/redo, `.cmsp` save/load, autosave + recovery, PNG/JPEG/WebP export, app icon | project round-trips losslessly |
 | M2 | `m2-ml-foundation` | ML worker, session pool, ModelManager, setup screen, GPU/CPU fallback | models download, verify, load |
-| M3 | `m3-text` | OCR, editable text layers, inpaint under text, style + font match, Add Text | Detect Text + edit works on fixtures |
-| M4 | `m4-objects` | Magic Select, Cut/Delete, Erase, Remove BG, shapes, adjust, crop/rotate/resize | all image tools work |
+| M3 | `m3-text` | OCR, editable text layers, inpaint under text, style + font match, bundled OFL fonts | Detect Text + edit works on fixtures |
+| M4 | `m4-objects` | Magic Select, Cut/Delete, Erase, Remove BG, adjust, crop/rotate/resize | all image tools work |
 | M5 | `m5-pdf` | native text layers, scanned OCR, page ops, PDF export, searchable PDF | exported PDFs open correctly in Acrobat Reader and Chrome |
 | M6 | `m6-ai` | key settings, prompt bar, generation, History/Compare, Usage, sync | end-to-end with real key (owner verifies) |
 | M7 | `v1.0.0` | installer, auto-update, file associations, branding artwork, docs | clean Windows install works end to end |

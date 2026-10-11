@@ -15,7 +15,8 @@
     "preview": "electron-vite preview",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
-    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "typecheck:test": "tsc --noEmit -p tsconfig.test.json",
+    "typecheck": "npm run typecheck:node && npm run typecheck:web && npm run typecheck:test",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -24,6 +25,7 @@
     "test:e2e": "npm run build && playwright test"
   },
   "dependencies": {
+    "fflate": "0.8.3",
     "zod": "4.6.5"
   },
   "devDependencies": {
@@ -38,12 +40,18 @@
     "eslint": "10.12.0",
     "eslint-plugin-react-hooks": "7.1.1",
     "globals": "17.13.0",
+    "immer": "11.1.21",
+    "konva": "10.7.1",
+    "lucide-react": "1.55.0",
+    "pdfjs-dist": "6.4.299",
     "prettier": "3.9.10",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "react-konva": "19.3.0",
     "typescript": "6.0.3",
     "typescript-eslint": "8.71.1",
     "vite": "7.3.7",
-    "vitest": "5.0.3"
+    "vitest": "5.0.3",
+    "zustand": "5.0.15"
   }
 }
