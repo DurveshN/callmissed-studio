@@ -1,0 +1,8 @@
+out
+dist
+release
+coverage
+.research
+.superpowers
+docs
+package-lock.json
