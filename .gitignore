@@ -14,3 +14,4 @@ playwright-report/
 Thumbs.db
 *.stackdump
 *.tsbuildinfo
+.playwright-mcp/
