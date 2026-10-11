@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { crc32, deflateSync } from 'node:zlib'
@@ -10,9 +10,17 @@ export function tempDir(prefix: string): string {
 
 /** Launches the built app with an isolated profile. */
 export async function launchApp(
-  userData = tempDir('profile')
+  options: { userData?: string; env?: Record<string, string>; modelSetupDone?: boolean } = {}
 ): Promise<{ app: ElectronApplication; window: Page }> {
-  const app = await electron.launch({ args: ['.'], env: { ...process.env, STUDIO_USER_DATA: userData } })
+  const userData = options.userData ?? tempDir('profile')
+  // Most tests skip the first-run AI model setup screen.
+  if (options.modelSetupDone ?? true) {
+    writeFileSync(join(userData, 'settings.json'), JSON.stringify({ gpu: 'auto', modelSetupDone: true }))
+  }
+  const app = await electron.launch({
+    args: ['.'],
+    env: { ...process.env, ...options.env, STUDIO_USER_DATA: userData }
+  })
   const window = await app.firstWindow()
   await window.waitForLoadState('domcontentloaded')
   return { app, window }

@@ -16,7 +16,8 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
     "typecheck:test": "tsc --noEmit -p tsconfig.test.json",
-    "typecheck": "npm run typecheck:node && npm run typecheck:web && npm run typecheck:test",
+    "typecheck:preload": "tsc --noEmit -p tsconfig.preload.json",
+    "typecheck": "npm run typecheck:node && npm run typecheck:preload && npm run typecheck:web && npm run typecheck:test",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -26,6 +27,7 @@
   },
   "dependencies": {
     "fflate": "0.8.3",
+    "onnxruntime-node": "1.30.0",
     "zod": "4.6.5"
   },
   "devDependencies": {

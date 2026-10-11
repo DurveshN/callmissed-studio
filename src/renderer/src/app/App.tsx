@@ -2,7 +2,11 @@ import { useEffect, useState } from 'react'
 import { commands } from '../features/commands/commands'
 import { useDocumentStore } from '../features/document/store'
 import { EditorScreen } from '../features/editor/EditorScreen'
+import { ModelSetupScreen } from '../features/models/ModelSetupScreen'
+import { startModelSync, useModelsStore } from '../features/models/models-store'
 import { startAutosave } from '../features/session/autosave'
+import { SettingsDialog } from '../features/settings/SettingsDialog'
+import { useSettingsUi } from '../features/settings/settings-ui'
 import { StartScreen } from '../features/start/StartScreen'
 import { ContextMenu } from '../ui/ContextMenu'
 import { ConfirmDialog, Toaster } from '../ui/Overlays'
@@ -50,15 +54,19 @@ function useFileDrop(): boolean {
 
 export function App() {
   const hasDocument = useDocumentStore((s) => s.doc !== null)
+  const needsModelSetup = useModelsStore((s) => s.loaded && s.settings?.modelSetupDone === false)
+  const settingsOpen = useSettingsUi((s) => s.open)
   const dropping = useFileDrop()
 
   useEffect(() => startAutosave(), [])
+  useEffect(() => startModelSync(), [])
   useEffect(() => window.studio.on('app:open-path', ({ path }) => void commands.openPath(path)), [])
   useEffect(() => window.studio.on('app:save-and-close', () => void commands.saveAndClose()), [])
 
   return (
     <ErrorBoundary>
-      {hasDocument ? <EditorScreen /> : <StartScreen />}
+      {hasDocument ? <EditorScreen /> : needsModelSetup ? <ModelSetupScreen /> : <StartScreen />}
+      {settingsOpen && <SettingsDialog onClose={() => useSettingsUi.getState().setOpen(false)} />}
       {dropping && <div className={styles.dropOverlay}>Drop to open</div>}
       <ContextMenu />
       <ConfirmDialog />

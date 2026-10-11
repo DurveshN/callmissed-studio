@@ -39,7 +39,7 @@ Versions are the research snapshot of 2026-10-11 and are re-verified at install 
 | Canvas | Konva + react-konva |
 | Validation | zod (IPC payloads, settings, project files) |
 | ML | onnxruntime-node (DirectML EP → CPU EP), `@techstark/opencv-js` (contours, Telea inpaint) |
-| Models | PP-OCRv5 det + English rec, SAM 2.1 tiny (MobileSAM fallback), LaMa, BiRefNet_lite |
+| Models | PP-OCRv5 mobile det + rec (official ONNX; the multilingual recognizer, which reads English), SAM 2.1 tiny, LaMa, BiRefNet_lite — see `.research/09-model-verification.md` |
 | PDF | `pdfjs-dist` (render, text content), `@cantoo/pdf-lib` + `@pdf-lib/fontkit` (write) |
 | Storage | `node:sqlite` (built into Electron's Node 24; no native module), `fflate` (zip), Electron `safeStorage` |
 | Logging | electron-log (API key scrubbed) |
@@ -89,7 +89,6 @@ src/
     features/{import,canvas,tools,layers,inspector,ai-prompt,history,usage,settings,model-setup,export}/
       each: components/, store slice, tests
     workers/font-match.worker.ts
-tools/model-export/  Python scripts that export/verify ONNX models (dev only, not shipped)
 resources/           icons, bundled OFL fonts, model manifest
 ```
 
@@ -192,9 +191,9 @@ Source: `.research/08-callmissed-image-api.md`. Exact field names are re-verifie
 
 ### 7.1 Model delivery
 
-- `resources/models.manifest.json`: `{ id, version, files: [{ name, url, mirrorUrl, sha256, bytes }], license, group: 'essential' | 'optional' }`.
-- Primary hosting: this repo's GitHub Release `models-v1`; mirror: pinned Hugging Face revision.
-- ONNX files produced by `tools/model-export/` scripts (reproducible, auditable).
+- `resources/models.manifest.json`: packs `{ id, name, group: 'essential' | 'optional', license, source, version, files: [{ name, urls[], sha256, bytes }] }`.
+- Sources: upstream ONNX files on Hugging Face, every URL pinned to an immutable commit (`/resolve/<sha>/`); `urls` is an ordered list so a GitHub Release mirror can be added later without code changes. No self-converted weights are shipped.
+- Packs are installed to `userData/models/<id>/`; `installed.json` records the pack version so a manifest bump triggers a re-download.
 - First-launch setup screen: Essentials (OCR det+rec, SAM 2.1 tiny) and Optional (LaMa, BiRefNet_lite), all pre-checked, skippable; tools prompt to download a missing model on first use.
 - Download: HTTP Range resume, 3 retries with exponential backoff, SHA-256 verify before activation, mismatch → delete + error.
 

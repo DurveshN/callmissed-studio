@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import { AssetMeta, Id, StudioDocument } from '../document/model'
 import { History } from '../document/history'
+import { ModelId, ModelStatus } from '../ml/models'
+import { Settings, SettingsPatch } from '../settings'
 import type { AppEvent, Channel } from './channels'
 
 export { CHANNELS, EVENTS, isAppEvent, isChannel, type AppEvent, type Channel } from './channels'
@@ -130,6 +132,30 @@ export const contracts = {
   'window:close-confirmed': {
     request: z.undefined(),
     response: z.undefined()
+  },
+  'models:list': {
+    request: z.undefined(),
+    response: z.array(ModelStatus)
+  },
+  'models:download': {
+    request: z.object({ ids: z.array(ModelId).min(1) }),
+    response: z.undefined()
+  },
+  'models:cancel': {
+    request: z.object({ id: ModelId }),
+    response: z.undefined()
+  },
+  'models:remove': {
+    request: z.object({ id: ModelId }),
+    response: z.undefined()
+  },
+  'settings:get': {
+    request: z.undefined(),
+    response: Settings
+  },
+  'settings:update': {
+    request: SettingsPatch,
+    response: Settings
   }
 } as const satisfies Record<Channel, Contract>
 
@@ -140,6 +166,9 @@ export type Response<C extends Channel> = z.infer<(typeof contracts)[C]['respons
 export interface EventPayloads {
   'app:save-and-close': undefined
   'app:open-path': { path: string }
+  'models:changed': ModelStatus[]
+  'settings:changed': Settings
+  'ml:gpu-failed': { message: string }
 }
 export type EventPayload<E extends AppEvent> = EventPayloads[E]
 

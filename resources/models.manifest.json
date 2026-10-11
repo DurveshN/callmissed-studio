@@ -1,0 +1,121 @@
+{
+  "schema": 1,
+  "packs": [
+    {
+      "id": "ocr",
+      "name": "Text detection",
+      "description": "Finds and reads text in images and scanned pages (PaddleOCR PP-OCRv5 mobile).",
+      "group": "essential",
+      "license": "Apache-2.0",
+      "source": "https://huggingface.co/PaddlePaddle/PP-OCRv5_mobile_det_onnx",
+      "version": "pp-ocrv5-mobile-1",
+      "files": [
+        {
+          "name": "det.onnx",
+          "urls": [
+            "https://huggingface.co/PaddlePaddle/PP-OCRv5_mobile_det_onnx/resolve/e6f4fa85f00e168c862bc462aebca69eef9b3d3d/inference.onnx"
+          ],
+          "sha256": "a431985659dc921974177a95adcfbb90fd9e51989a5e04d70d0b75f597b6e61d",
+          "bytes": 4826518
+        },
+        {
+          "name": "rec.onnx",
+          "urls": [
+            "https://huggingface.co/PaddlePaddle/PP-OCRv5_mobile_rec_onnx/resolve/ed152b8b495f84de93cda5709d768548a9127622/inference.onnx"
+          ],
+          "sha256": "da72dc72ca4dc220df0dfde68c1dedc31c58d3e76a25871122e5056227d50092",
+          "bytes": 16534782
+        },
+        {
+          "name": "rec.yml",
+          "urls": [
+            "https://huggingface.co/PaddlePaddle/PP-OCRv5_mobile_rec_onnx/resolve/ed152b8b495f84de93cda5709d768548a9127622/inference.yml"
+          ],
+          "sha256": "5dfeb2777f6d0db8177d8128a8acfcf6e6276dc4ac73ea3bf0dc06d6a5e85d8e",
+          "bytes": 148345
+        }
+      ]
+    },
+    {
+      "id": "segment",
+      "name": "Object selection",
+      "description": "Selects any object you click (Meta SAM 2.1 tiny, ONNX conversion by onnx-community).",
+      "group": "essential",
+      "license": "Apache-2.0",
+      "source": "https://huggingface.co/onnx-community/sam2.1-hiera-tiny-ONNX",
+      "version": "sam2.1-tiny-1",
+      "files": [
+        {
+          "name": "vision_encoder.onnx",
+          "urls": [
+            "https://huggingface.co/onnx-community/sam2.1-hiera-tiny-ONNX/resolve/814a066640debee5a91e70aa401fb8e17e030503/onnx/vision_encoder.onnx"
+          ],
+          "sha256": "4f30aacd3aaefbca81a0b7fe4c1fc96345570ea0a6f80ced599493d1b3be2e8c",
+          "bytes": 354238
+        },
+        {
+          "name": "vision_encoder.onnx_data",
+          "urls": [
+            "https://huggingface.co/onnx-community/sam2.1-hiera-tiny-ONNX/resolve/814a066640debee5a91e70aa401fb8e17e030503/onnx/vision_encoder.onnx_data"
+          ],
+          "sha256": "e83df9866a5afe68ea7f0f721f18f65137fc3acbf0da1c74e946d363e09c69cc",
+          "bytes": 134084864
+        },
+        {
+          "name": "prompt_encoder_mask_decoder.onnx",
+          "urls": [
+            "https://huggingface.co/onnx-community/sam2.1-hiera-tiny-ONNX/resolve/814a066640debee5a91e70aa401fb8e17e030503/onnx/prompt_encoder_mask_decoder.onnx"
+          ],
+          "sha256": "874414704c5d686db7d206a35f6e15d26563d50c8c4468fccc6739bd7e491dcf",
+          "bytes": 213114
+        },
+        {
+          "name": "prompt_encoder_mask_decoder.onnx_data",
+          "urls": [
+            "https://huggingface.co/onnx-community/sam2.1-hiera-tiny-ONNX/resolve/814a066640debee5a91e70aa401fb8e17e030503/onnx/prompt_encoder_mask_decoder.onnx_data"
+          ],
+          "sha256": "e9874d900dd4134ed60eab1e97910327c2419e0b2954485d8fd6e7f1a1470f47",
+          "bytes": 20958208
+        }
+      ]
+    },
+    {
+      "id": "inpaint",
+      "name": "High-quality eraser",
+      "description": "Fills erased areas realistically (LaMa big, ONNX export by Carve). Without it, a fast basic fill is used.",
+      "group": "optional",
+      "license": "Apache-2.0",
+      "source": "https://huggingface.co/Carve/LaMa-ONNX",
+      "version": "lama-fp32-1",
+      "files": [
+        {
+          "name": "lama_fp32.onnx",
+          "urls": [
+            "https://huggingface.co/Carve/LaMa-ONNX/resolve/c3c0c9e468934d62e79c329e35d82dd09ff8c444/lama_fp32.onnx"
+          ],
+          "sha256": "1faef5301d78db7dda502fe59966957ec4b79dd64e16f03ed96913c7a4eb68d6",
+          "bytes": 208044816
+        }
+      ]
+    },
+    {
+      "id": "remove-bg",
+      "name": "Background removal",
+      "description": "Cuts the main subject out of a photo (BiRefNet lite, ONNX conversion by onnx-community).",
+      "group": "optional",
+      "license": "MIT",
+      "source": "https://huggingface.co/onnx-community/BiRefNet_lite-ONNX",
+      "version": "birefnet-lite-1",
+      "files": [
+        {
+          "name": "model.onnx",
+          "urls": [
+            "https://huggingface.co/onnx-community/BiRefNet_lite-ONNX/resolve/de15b22ba131738a16dff04aab8bdf8dc32e3ac1/onnx/model.onnx"
+          ],
+          "sha256": "5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333",
+          "bytes": 224005088
+        }
+      ]
+    }
+  ]
+}

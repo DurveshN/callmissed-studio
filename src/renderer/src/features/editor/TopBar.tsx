@@ -13,6 +13,7 @@ import {
   Slash,
   Square,
   Type,
+  Settings,
   Undo2,
   X
 } from 'lucide-react'
@@ -22,6 +23,7 @@ import { commands } from '../commands/commands'
 import { selectIsDirty, useDocumentStore } from '../document/store'
 import { useToolStore, type Tool } from '../tools/tool-store'
 import { useViewportStore } from '../canvas/viewport-store'
+import { useSettingsUi } from '../settings/settings-ui'
 import ui from '../../ui/ui.module.css'
 import styles from './Editor.module.css'
 
@@ -127,6 +129,9 @@ export function TopBar({ onExport }: { onExport(): void }) {
           <Maximize size={16} />
         </IconButton>
         <span className={styles.divider} />
+        <IconButton label="Settings" onClick={() => useSettingsUi.getState().setOpen(true)}>
+          <Settings size={18} />
+        </IconButton>
         <IconButton label="Close document" onClick={() => void commands.close()}>
           <X size={18} />
         </IconButton>

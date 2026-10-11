@@ -27,7 +27,16 @@ function csp(): Plugin {
 
 export default defineConfig({
   main: {
-    resolve: { alias: { '@shared': shared } }
+    resolve: { alias: { '@shared': shared } },
+    build: {
+      rollupOptions: {
+        // The ML worker runs in its own utilityProcess and is emitted next to the main bundle.
+        input: {
+          index: resolve(__dirname, 'src/main/index.ts'),
+          'ml-worker': resolve(__dirname, 'src/ml/worker.ts')
+        }
+      }
+    }
   },
   preload: {
     resolve: { alias: { '@shared': shared } },

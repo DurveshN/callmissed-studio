@@ -17,7 +17,13 @@ export const CHANNELS = [
   'library:forget',
   'export:save-image',
   'window:set-dirty',
-  'window:close-confirmed'
+  'window:close-confirmed',
+  'models:list',
+  'models:download',
+  'models:cancel',
+  'models:remove',
+  'settings:get',
+  'settings:update'
 ] as const
 
 export type Channel = (typeof CHANNELS)[number]
@@ -27,7 +33,13 @@ export function isChannel(value: unknown): value is Channel {
 }
 
 /** Main → renderer push events. */
-export const EVENTS = ['app:save-and-close', 'app:open-path'] as const
+export const EVENTS = [
+  'app:save-and-close',
+  'app:open-path',
+  'models:changed',
+  'settings:changed',
+  'ml:gpu-failed'
+] as const
 export type AppEvent = (typeof EVENTS)[number]
 
 export function isAppEvent(value: unknown): value is AppEvent {

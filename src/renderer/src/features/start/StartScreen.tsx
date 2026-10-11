@@ -1,8 +1,9 @@
-import { FileImage, FolderOpen, History, X } from 'lucide-react'
+import { FileImage, FolderOpen, History, Settings, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import type { RecentProject, Recoverable } from '@shared/ipc/contracts'
 import { call } from '../../lib/ipc'
 import { commands } from '../commands/commands'
+import { useSettingsUi } from '../settings/settings-ui'
 import ui from '../../ui/ui.module.css'
 import styles from './StartScreen.module.css'
 
@@ -25,10 +26,13 @@ export function StartScreen() {
       <div className={styles.content}>
         <header className={styles.hero}>
           <img className={styles.logo} src="./icon.png" alt="" />
-          <div>
+          <div className={styles.heroText}>
             <h1 className={styles.title}>CallMissed Studio</h1>
             <p className={styles.subtitle}>Edit text and objects in images and PDFs.</p>
           </div>
+          <button className={ui.button} onClick={() => useSettingsUi.getState().setOpen(true)}>
+            <Settings size={16} /> Settings
+          </button>
         </header>
 
         <button

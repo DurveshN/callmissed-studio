@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    // Preload runs in the renderer process (DOM) with Electron/Node APIs available.
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node"]
+  },
+  "include": ["src/preload/**/*", "src/shared/**/*"]
+}

@@ -170,3 +170,7 @@
 .card:hover .forget {
   opacity: 1;
 }
+
+.heroText {
+  flex: 1;
+}

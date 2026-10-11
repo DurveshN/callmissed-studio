@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
 import type { StudioApi } from '@shared/ipc/api'
 import { isAppEvent, isChannel } from '@shared/ipc/channels'
+import { mlBridge } from './ml-bridge'
 
 const api: StudioApi = {
   invoke(channel, input) {
@@ -22,7 +23,8 @@ const api: StudioApi = {
   },
   pathForFile(file) {
     return webUtils.getPathForFile(file)
-  }
+  },
+  ml: mlBridge
 }
 
 contextBridge.exposeInMainWorld('studio', api)

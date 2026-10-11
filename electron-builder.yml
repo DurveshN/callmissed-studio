@@ -7,6 +7,12 @@ directories:
 files:
   - out/**
   - package.json
+  # Only the Windows x64 ONNX Runtime binaries are needed.
+  - '!node_modules/onnxruntime-node/bin/napi-v*/{darwin,linux}/**'
+  - '!node_modules/onnxruntime-node/bin/napi-v*/win32/arm64/**'
+# Native modules and their DLLs cannot be loaded from inside the asar archive.
+asarUnpack:
+  - node_modules/onnxruntime-node/**
 extraResources:
   - from: resources
     to: resources
