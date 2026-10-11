@@ -12,3 +12,4 @@ playwright-report/
 *.onnx
 .DS_Store
 Thumbs.db
+*.stackdump
