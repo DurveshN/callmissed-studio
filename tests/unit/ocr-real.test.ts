@@ -61,8 +61,8 @@ describe('OCR on real models', () => {
 
   it('measures the rotation of tilted text', () => {
     // Drawn rotated 12° counter-clockwise, i.e. -12° in image coordinates.
-    expect(line('Fresh Coffee').rect.angle).toBeGreaterThan(-15)
-    expect(line('Fresh Coffee').rect.angle).toBeLessThan(-9)
+    expect(line('Fresh Coffee').rect.angle).toBeGreaterThan(-12.5)
+    expect(line('Fresh Coffee').rect.angle).toBeLessThan(-11.5)
     expect(Math.abs(line('CallMissed Studio').rect.angle)).toBeLessThan(1.5)
   })
 

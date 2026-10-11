@@ -37,13 +37,16 @@ export type MlErrorCode =
 
 /** Main → worker control messages (over process.parentPort). */
 export type WorkerControl =
-  | { type: 'configure'; modelsDir: string; gpu: GpuMode; packs: ModelPack[] }
+  | { type: 'configure'; modelsDir: string; gpu: GpuMode; packs: ModelPack[]; requestId: number }
   | { type: 'connect' }
   | { type: 'release-models'; ids: string[]; requestId: number }
 
 /** Worker → main notifications. */
 export type WorkerNotice =
-  { type: 'ready' } | { type: 'gpu-failed'; message: string } | { type: 'released'; requestId: number }
+  | { type: 'ready' }
+  | { type: 'gpu-failed'; message: string }
+  /** Acknowledges a control message carrying `requestId` once it has fully taken effect. */
+  | { type: 'ack'; requestId: number }
 
 /** Outcome of a job as seen by the page (errors are values so their codes survive the context bridge). */
 export type MlOutcome = { ok: true; result: unknown } | { ok: false; code: MlErrorCode; message: string }

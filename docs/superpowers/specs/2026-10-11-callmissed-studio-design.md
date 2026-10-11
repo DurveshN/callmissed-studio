@@ -113,10 +113,12 @@ Layer =
 
 ### 4.1 Tools (v1.0)
 
+**Every image tool works on any raster** (owner requirement, 2026-10-11): the page background — whether the original upload, a rendered PDF page, or an AI result used as the page — or the selected image layer (inserted image or AI result added as a layer). Implemented once in `features/raster/raster-target.ts` (snapshot + mapping back to page coordinates), so AI-generated images are edited exactly like uploads.
+
 | Tool | Behavior |
 |---|---|
 | Select/Move | Transform, z-order, snapping guides, multi-select |
-| Detect Text | OCR page → TextLayer per line; original pixels inpainted into a Patch; style + font estimated |
+| Detect Text | OCR the selected image layer or the page → detected lines outlined; click one or Convert all → TextLayer per line (matched font/size/weight/color/rotation), original ink inpainted (page: Patch; image layer: new layer image), one undo step |
 | Add Text | New TextLayer |
 | Magic Select | Click points / box → SAM mask → Cut to layer (hole inpainted) / Delete (inpaint) / Copy |
 | Erase | Brush mask → inpaint; Quality (LaMa) / Fast (Telea) toggle |

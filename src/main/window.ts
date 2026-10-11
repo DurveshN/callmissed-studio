@@ -21,6 +21,27 @@ export function confirmClose(window: BrowserWindow): void {
   window.close()
 }
 
+const readyWindows = new WeakSet<BrowserWindow>()
+const pendingOpens = new WeakMap<BrowserWindow, string[]>()
+
+/** The renderer has mounted and subscribed to events; deliver anything queued while it loaded. */
+export function markRendererReady(window: BrowserWindow): void {
+  readyWindows.add(window)
+  for (const path of pendingOpens.get(window) ?? []) sendEvent(window, 'app:open-path', { path })
+  pendingOpens.delete(window)
+}
+
+/** A (re)loading renderer is not listening yet. */
+export function markRendererLoading(window: BrowserWindow): void {
+  readyWindows.delete(window)
+}
+
+/** Opens a file in the window now, or as soon as its UI is ready. */
+export function requestOpen(window: BrowserWindow, path: string): void {
+  if (readyWindows.has(window)) sendEvent(window, 'app:open-path', { path })
+  else pendingOpens.set(window, [...(pendingOpens.get(window) ?? []), path])
+}
+
 export function sendEvent<E extends AppEvent>(
   window: BrowserWindow,
   event: E,

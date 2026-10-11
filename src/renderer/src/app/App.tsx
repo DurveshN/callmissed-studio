@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { call } from '../lib/ipc'
 import { commands } from '../features/commands/commands'
 import { useDocumentStore } from '../features/document/store'
 import { EditorScreen } from '../features/editor/EditorScreen'
@@ -62,6 +63,8 @@ export function App() {
   useEffect(() => startModelSync(), [])
   useEffect(() => window.studio.on('app:open-path', ({ path }) => void commands.openPath(path)), [])
   useEffect(() => window.studio.on('app:save-and-close', () => void commands.saveAndClose()), [])
+  // Subscriptions are in place: let main deliver files opened while the UI was starting.
+  useEffect(() => void call('window:renderer-ready').catch(console.error), [])
 
   return (
     <ErrorBoundary>

@@ -1,5 +1,6 @@
 import { jobs, type JobInput, type JobResult } from '@shared/ml/jobs'
 import type { JobKind, MlErrorCode } from '@shared/ml/protocol'
+import { whenSettingsApplied } from '../models/models-store'
 
 export class MlError extends Error {
   constructor(
@@ -22,6 +23,8 @@ export async function runJob<K extends JobKind>(
   input: JobInput<K>,
   { onProgress, signal }: RunOptions = {}
 ): Promise<JobResult<K>> {
+  // A GPU mode switch in flight must reach the worker before this job does.
+  await whenSettingsApplied()
   if (signal?.aborted) throw new MlError('CANCELLED', 'Cancelled')
   const job = window.studio.ml.run(kind, input, onProgress)
   const onAbort = () => job.cancel()

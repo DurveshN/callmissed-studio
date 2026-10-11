@@ -2,6 +2,8 @@ import { useEffect } from 'react'
 import { commands } from '../commands/commands'
 import { deleteLayers, duplicateLayers, nudgeLayers, shiftLayers } from '../document/layer-ops'
 import { selectActivePage, useDocumentStore } from '../document/store'
+import { cancelDetect, detectText } from '../text-detect/detect'
+import { useDetectStore } from '../text-detect/detect-store'
 import { TOOL_SHORTCUTS, useToolStore } from '../tools/tool-store'
 
 function isTyping(target: EventTarget | null): boolean {
@@ -55,7 +57,10 @@ export function useShortcuts(onExport: () => void): void {
       }
 
       if (key === 'delete' || key === 'backspace') return run(() => deleteLayers(selection))
-      if (key === 'escape') return run(() => select([]))
+      if (key === 'escape') {
+        return run(() => (useDetectStore.getState().status !== 'idle' ? cancelDetect() : select([])))
+      }
+      if (key === 'd') return run(() => void detectText())
       if (key === 'i') return run(() => void commands.insertImage())
       const step = e.shiftKey ? 10 : 1
       if (key === 'arrowleft') return run(() => nudgeLayers(selection, -step, 0))

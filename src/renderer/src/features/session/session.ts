@@ -5,6 +5,7 @@ import { clearAssetCache, loadAssetImage } from '../assets/asset-cache'
 import { clearPdfCache, openPdf, pdfPageSizes } from '../assets/pdf'
 import { getHistory, useDocumentStore } from '../document/store'
 import { renderThumbnail } from '../export/render-page'
+import { cancelDetect } from '../text-detect/detect'
 import { flushAutosave } from './autosave'
 
 async function documentFromSource(opened: OpenedSource): Promise<StudioDocument> {
@@ -56,6 +57,7 @@ async function documentFromSource(opened: OpenedSource): Promise<StudioDocument>
 
 /** Closes whatever is open (without saving). */
 export async function closeDocument(): Promise<void> {
+  cancelDetect()
   const { docId } = useDocumentStore.getState()
   useDocumentStore.getState().unload()
   clearAssetCache()

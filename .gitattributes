@@ -4,3 +4,4 @@
 *.ico binary
 *.pdf binary
 *.onnx binary
+*.ttf binary

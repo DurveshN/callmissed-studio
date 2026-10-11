@@ -18,5 +18,11 @@ export function registerMlHandlers(models: ModelManager, ml: MlSupervisor, setti
   })
 
   handle('settings:get', () => settings.get())
-  handle('settings:update', (patch) => settings.update(patch))
+  handle('settings:update', async (patch) => {
+    const gpu = settings.get().gpu
+    const next = await settings.update(patch)
+    // Jobs started after this call returns must run with the new GPU mode.
+    if (next.gpu !== gpu) await ml.configure()
+    return next
+  })
 }

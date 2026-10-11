@@ -1,4 +1,4 @@
-import { otsu } from '../../image/morphology'
+import { inkPixels } from '../../image/ink'
 import { toHex, type Gray, type Rgba } from '../../image/raster'
 
 export interface LineStyle {
@@ -21,51 +21,26 @@ const median = (values: number[]): number => {
 
 /**
  * Estimates text color, background color, ink extent and stroke width of an upright line crop.
- * Background = median of the crop border; ink = pixels whose color distance from it is above Otsu.
+ * Ink = pixels far from the local background (see inkPixels), ignoring background structures that
+ * run into the crop's top or bottom edge.
  */
 export function estimateStyle(crop: Rgba): LineStyle {
   const { width, height, data } = crop
-  const border: [number[], number[], number[]] = [[], [], []]
-  const ring = Math.max(1, Math.round(height * 0.06))
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      if (x >= ring && x < width - ring && y >= ring && y < height - ring) continue
-      const i = (y * width + x) * 4
-      border[0].push(data[i] as number)
-      border[1].push(data[i + 1] as number)
-      border[2].push(data[i + 2] as number)
-    }
-  }
-  const bg = border.map(median) as [number, number, number]
-
-  const distance = new Uint8Array(width * height)
-  for (let p = 0; p < distance.length; p++) {
-    const i = p * 4
-    const d = Math.hypot(
-      (data[i] as number) - bg[0],
-      (data[i + 1] as number) - bg[1],
-      (data[i + 2] as number) - bg[2]
-    )
-    distance[p] = Math.min(255, Math.round(d / Math.sqrt(3)))
-  }
-  const threshold = Math.max(24, otsu(distance))
+  const ink = inkPixels(crop, { cx: width / 2, cy: height / 2, width, height, angle: 0 }, true)
+  // Anti-aliased edges blend toward the background, so the core of the strokes defines the color.
+  const strongCut = Math.min(255, ink.threshold + (255 - ink.threshold) * 0.35)
 
   const mask = new Uint8Array(width * height)
   const strong: [number[], number[], number[]] = [[], [], []]
-  const strongCut = Math.min(255, threshold + (255 - threshold) * 0.35)
+  const all: [number[], number[], number[]] = [[], [], []]
   let area = 0
-  for (let p = 0; p < mask.length; p++) {
-    if ((distance[p] as number) <= threshold) continue
+  for (const [p, d] of ink.distances) {
     mask[p] = 255
     area++
-    if ((distance[p] as number) >= strongCut) {
-      strong[0].push(data[p * 4] as number)
-      strong[1].push(data[p * 4 + 1] as number)
-      strong[2].push(data[p * 4 + 2] as number)
-    }
+    const target = d >= strongCut ? strong : all
+    for (let c = 0; c < 3; c++) target[c as 0 | 1 | 2].push(data[p * 4 + c] as number)
   }
-  // Anti-aliased edges blend toward the background, so the core of the strokes defines the color.
-  const ink = (strong[0].length ? strong : collect(data, mask)).map(median) as [number, number, number]
+  const color = (strong[0].length ? strong : all).map(median) as [number, number, number]
 
   let inkTop = height
   let inkBottom = 0
@@ -88,23 +63,12 @@ export function estimateStyle(crop: Rgba): LineStyle {
   }
 
   return {
-    color: toHex(...ink),
-    background: toHex(...bg),
+    color: toHex(...color),
+    background: toHex(...ink.background),
     inkTop,
     inkBottom,
     // For strokes of thickness s and total length L: area ≈ s·L and perimeter ≈ 2L.
     strokeWidth: perimeter ? (2 * area) / perimeter : 0,
     mask: { width, height, data: mask }
   }
-}
-
-function collect(data: Uint8Array, mask: Uint8Array): [number[], number[], number[]] {
-  const out: [number[], number[], number[]] = [[], [], []]
-  for (let p = 0; p < mask.length; p++) {
-    if (!mask[p]) continue
-    out[0].push(data[p * 4] as number)
-    out[1].push(data[p * 4 + 1] as number)
-    out[2].push(data[p * 4 + 2] as number)
-  }
-  return out
 }

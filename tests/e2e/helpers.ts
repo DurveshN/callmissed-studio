@@ -1,8 +1,10 @@
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { crc32, deflateSync } from 'node:zlib'
 import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test'
+import { ModelManifest, type ModelId } from '../../src/shared/ml/models'
+import { ensureModelPack } from '../fixtures/models'
 
 export function tempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), `studio-${prefix}-`))
@@ -33,10 +35,10 @@ export async function stubSaveDialog(app: ElectronApplication, path: string): Pr
   }, path)
 }
 
-/** Opens a file the same way "Open with" does (main → renderer event). */
+/** Opens a file exactly like "Open with" on a running app (a second instance forwarding its argv). */
 export async function openViaMain(app: ElectronApplication, path: string): Promise<void> {
-  await app.evaluate(({ BrowserWindow }, filePath) => {
-    BrowserWindow.getAllWindows()[0]?.webContents.send('app:open-path', { path: filePath })
+  await app.evaluate(({ app: electronApp }, filePath) => {
+    electronApp.emit('second-instance', {}, [process.execPath, filePath], process.cwd(), {})
   }, path)
 }
 
@@ -112,4 +114,28 @@ export async function closeApp(app: ElectronApplication): Promise<void> {
     .evaluate(({ app: electronApp }) => setTimeout(() => electronApp.exit(0), 0))
     .catch(() => undefined)
   await exited
+}
+
+/** Makes the next native open dialog return `path`. */
+export async function stubOpenDialog(app: ElectronApplication, path: string): Promise<void> {
+  await app.evaluate(({ dialog }, filePath) => {
+    dialog.showOpenDialog = (async () => ({
+      canceled: false,
+      filePaths: [filePath]
+    })) as typeof dialog.showOpenDialog
+  }, path)
+}
+
+/** Installs real model packs (from the verified .cache) into a test profile before launch. */
+export async function seedModels(userData: string, ids: ModelId[]): Promise<void> {
+  const manifest = ModelManifest.parse(JSON.parse(readFileSync('resources/models.manifest.json', 'utf8')))
+  const cache = await Promise.all(ids.map((id) => ensureModelPack(id))).then((roots) => roots[0] as string)
+  const installed: Record<string, { version: string }> = {}
+  for (const id of ids) {
+    const pack = manifest.packs.find((p) => p.id === id)
+    if (!pack) throw new Error(`Unknown pack ${id}`)
+    cpSync(join(cache, id), join(userData, 'models', id), { recursive: true })
+    installed[id] = { version: pack.version }
+  }
+  writeFileSync(join(userData, 'models', 'installed.json'), JSON.stringify(installed))
 }

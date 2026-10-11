@@ -1,14 +1,8 @@
+import { rectCorners, type RotatedRect } from '@shared/geometry/rotated-rect'
 import type { Point } from './raster'
 
-export interface RotatedRect {
-  cx: number
-  cy: number
-  /** Side along the text direction (always >= height). */
-  width: number
-  height: number
-  /** Degrees, clockwise in image coordinates, in (-90, 90]. */
-  angle: number
-}
+export type { RotatedRect }
+export { rectCorners }
 
 export interface Component {
   /** Pixel indices belonging to the component. */
@@ -158,18 +152,26 @@ export function normalize(rect: RotatedRect): RotatedRect {
   return { cx: rect.cx, cy: rect.cy, width, height, angle }
 }
 
-/** Corners as top-left, top-right, bottom-right, bottom-left along the rectangle's own axes. */
-export function rectCorners(rect: RotatedRect): Point[] {
-  const rad = (rect.angle * Math.PI) / 180
-  const ux = Math.cos(rad)
-  const uy = Math.sin(rad)
-  const hw = rect.width / 2
-  const hh = rect.height / 2
-  const at = (su: number, sv: number): Point => ({
-    x: rect.cx + su * hw * ux - sv * hh * uy,
-    y: rect.cy + su * hw * uy + sv * hh * ux
-  })
-  return [at(-1, -1), at(1, -1), at(1, 1), at(-1, 1)]
+/** Smallest rectangle at a fixed `angle` (degrees) that contains every point. */
+export function rectAtAngle(points: Point[], angle: number): RotatedRect {
+  const rad = (angle * Math.PI) / 180
+  const cos = Math.cos(rad)
+  const sin = Math.sin(rad)
+  let minU = Infinity
+  let maxU = -Infinity
+  let minV = Infinity
+  let maxV = -Infinity
+  for (const p of points) {
+    const u = p.x * cos + p.y * sin
+    const v = -p.x * sin + p.y * cos
+    minU = Math.min(minU, u)
+    maxU = Math.max(maxU, u)
+    minV = Math.min(minV, v)
+    maxV = Math.max(maxV, v)
+  }
+  const cu = (minU + maxU) / 2
+  const cv = (minV + maxV) / 2
+  return { cx: cu * cos - cv * sin, cy: cu * sin + cv * cos, width: maxU - minU, height: maxV - minV, angle }
 }
 
 /** Grows a rectangle like PaddleOCR's unclip: offset distance = area * ratio / perimeter on every side. */

@@ -8,6 +8,10 @@ import { addLayer, updateLayers } from '../document/layer-ops'
 import { newShapeLayer, newTextLayer } from '../document/factories'
 import { selectActivePage, useDocumentStore } from '../document/store'
 import { useToolStore, type Tool } from '../tools/tool-store'
+import { cancelDetect } from '../text-detect/detect'
+import { useDetectStore } from '../text-detect/detect-store'
+import { DetectBar } from '../text-detect/DetectBar'
+import { DetectOverlay } from '../text-detect/DetectOverlay'
 import { LAYER_NAME, LayerNode } from './LayerNode'
 import { PageBackground } from './PageBackground'
 import { registerPageGroup } from './stage-registry'
@@ -98,6 +102,12 @@ export function CanvasView() {
   useEffect(() => {
     registerPageGroup(groupRef.current)
     return () => registerPageGroup(null)
+  }, [pageId])
+
+  // Detected lines belong to one page; switching pages ends that detection.
+  useEffect(() => {
+    const target = useDetectStore.getState().target
+    if (target && target.pageId !== pageId) cancelDetect()
   }, [pageId])
 
   // Attach the transformer to selected, visible, unlocked, non-editing layers.
@@ -433,9 +443,11 @@ export function CanvasView() {
             />
           ))}
           {draft && <DraftShape drag={draft} px={px} />}
+          <DetectOverlay pageId={page.id} px={px} />
         </KonvaLayer>
       </Stage>
       {editingLayer?.type === 'text' && <TextEditor key={editingLayer.id} layer={editingLayer} />}
+      <DetectBar />
     </div>
   )
 }

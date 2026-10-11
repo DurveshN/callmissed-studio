@@ -18,6 +18,7 @@ export const CHANNELS = [
   'export:save-image',
   'window:set-dirty',
   'window:close-confirmed',
+  'window:renderer-ready',
   'models:list',
   'models:download',
   'models:cancel',

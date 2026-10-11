@@ -98,12 +98,12 @@ parent.on('message', (event: { data: WorkerControl; ports: Port[] }) => {
   const msg = event.data
   if (msg.type === 'configure') {
     packs = msg.packs
-    pool.configure(msg.modelsDir, msg.gpu)
+    void pool.configure(msg.modelsDir, msg.gpu).then(() => notify({ type: 'ack', requestId: msg.requestId }))
   } else if (msg.type === 'connect') {
     const port = event.ports[0]
     if (port) attach(port)
   } else if (msg.type === 'release-models') {
-    void pool.release(msg.ids).then(() => notify({ type: 'released', requestId: msg.requestId }))
+    void pool.release(msg.ids).then(() => notify({ type: 'ack', requestId: msg.requestId }))
   }
 })
 

@@ -11,7 +11,8 @@ CallMissed Studio — open-source (MIT) Windows Electron app: local OCR/segmenta
 - **M1 shell done** (tag `m1-shell`): start screen (open, drop, recents, crash recovery), Canva-style editor (top bar, canvas, Inspector/Layers/Pages tabs), Select/Hand/Text/Rect/Ellipse/Line/Insert image, transform + snapping + marquee, undo/redo (persisted), `.cmsp` save/open, autosave, export PNG/JPEG/WebP, unsaved-changes guards.
 - Arrange (bring to front / forward / send backward / to back) via right-click menu on canvas + layer rows and Inspector "Arrange" section (`features/arrange/`). Background always stays bottom-most.
 - **M2 ML foundation done** (tag `m2-ml-foundation`): model manifest (4 packs, pinned HF commits, SHA-256), resumable downloader, ML utilityProcess with ONNX Runtime (DirectML → CPU fallback), MessagePort bridge, first-run "Set up AI features" screen, Settings dialog (models download/test/remove, GPU toggle). All 4 real packs verified to download and load on DirectML (`.research/09-model-verification.md`).
-- Next: M3 text (OCR pipeline, editable text layers, inpaint under text, style + font match, bundled OFL fonts).
+- **M3 text done** (tag `m3-text`): Detect Text (toolbar / `D`) on the page or the selected image layer → outlined lines → click or Convert all → editable text with matched font, size, weight, color and rotation; original ink erased (LaMa if installed, else Telea); one undo step. Verified on `tests/fixtures/ocr-poster.png`: all 5 lines exact, Arial / Arial Bold identified, rotation −12°.
+- Next: M4 objects (Magic Select with SAM 2.1, cut/delete with inpaint, eraser brush, remove background, adjust, crop/rotate/resize).
 
 ## Pinned toolchain (compatibility-constrained)
 
@@ -38,12 +39,20 @@ CallMissed Studio — open-source (MIT) Windows Electron app: local OCR/segmenta
 - `SessionPool`: DML options need `enableMemPattern: false` + `executionMode: 'sequential'`; first DML failure switches the pool to CPU and emits `ml:gpu-failed`.
 - `ModelManager`: `.part` files + HTTP Range resume, restarts if the server ignores Range, non-retryable on 4xx (except 429), state transitions emitted immediately, progress throttled to 150 ms. Uses Electron `net.fetch` (system proxy). Test-only env `STUDIO_MODEL_MANIFEST` (unpackaged builds only).
 - DirectML first load is slow for big models (LaMa ~8 s, BiRefNet ~25 s on Iris Xe) — warm up in background in M4.
+- OCR pipeline (`src/ml/pipelines/ocr/`): det (resize long side to 960–1920, BGR ImageNet norm, DB post-process thresh 0.3 / box 0.6 / unclip 1.5) → rec (48 px high, BGR [-1,1], CTC; class 0 blank, 1..18383 = rec.yml dict, last = space) → **words grouped into lines** (`lines.ts`; the detector returns words for large text) → **refine** (`refine.ts`: projection-profile deskew ±5° from ink inside the detected box, then refit at that angle scanning +12% while sampling background from the inner box) → style.
+- Ink model (`src/ml/image/ink.ts`): background sampled per position along the box's top and bottom bands (handles lines crossing two backgrounds); ink = farther than Otsu from both; components touching the top/bottom band are dropped (panel borders, gradient edges). Used by refine, style and the erase mask — keep them on this one definition.
+- LaMa (Carve ONNX): inputs RGB 0..1 + mask {0,1} at 512², output RGB 0..255 (verified against the repo's reference output). Letterboxed context crop, feathered blend inside the mask only.
+- Font matching runs in a renderer web worker (`features/fonts/font-match.worker.ts`): renders recognized text per candidate (17 bundled OFL families + 12 Windows fonts, weights ~400/~700), fits ink width, scores IoU minus ink-height mismatch. Placement reproduces Konva 10's non-legacy layout: baseline at `(fontAscent − fontDescent)/2 + lineHeight·size/2` from the box top.
+- Bundled fonts are variable TTFs from google/fonts @ bd8f81d (`src/renderer/public/fonts/`); M5 PDF export must instance variable fonts for specific weights.
+- MessagePortMain cannot receive or send transferred ArrayBuffers: preload and worker post without transfer lists (a transfer list throws and, inside a promise, hung jobs silently — fixed).
+- Renderer mounts only after bundled fonts load; main queues `app:open-path` until `window:renderer-ready` (otherwise "Open with" at startup was lost).
+- GPU mode changes are acknowledged by the worker (`configure` + `ack`), `settings:update` awaits it, and `runJob` awaits any in-flight settings save.
 - Packaging: `electron-builder.yml` unpacks `onnxruntime-node` from asar and drops non-win-x64 binaries (verify in M7).
 
 ## Testing
 
-- `npm test` — Vitest unit (61 tests): IPC contracts, CSP, protocol path guard, project zip, library DB, project service, document store, snapping, arrange, model manager (local HTTP server: resume, bad checksum, 404, cancel, version bump), session pool fallback, job queue, manifest pinning/licences, ONNX fixture.
-- `npm run test:e2e` — builds then Playwright drives Electron (20 tests). Helpers in `tests/e2e/helpers.ts`: isolated profile via `STUDIO_USER_DATA`, `launchApp({ modelSetupDone })` seeds settings, dialog stubs, generated PNG/PDF fixtures, `closeApp()` force-exits (native unsaved-changes modal would hang the run). `tests/fixtures/onnx.ts` hand-encodes a tiny Identity ONNX model so model tests never hit the network.
+- `npm test` — Vitest unit (80 tests + 1 opt-in LaMa test via `STUDIO_TEST_LAMA=1`; real OCR models are downloaded once into `.cache/models`, SHA-256 verified): IPC contracts, CSP, protocol path guard, project zip, library DB, project service, document store, snapping, arrange, model manager (local HTTP server: resume, bad checksum, 404, cancel, version bump), session pool fallback, job queue, manifest pinning/licences, ONNX fixture.
+- `npm run test:e2e` — builds then Playwright drives Electron (26 tests, incl. Detect Text with real OCR models seeded via `seedModels`). Helpers in `tests/e2e/helpers.ts`: isolated profile via `STUDIO_USER_DATA`, `launchApp({ modelSetupDone })` seeds settings, dialog stubs, generated PNG/PDF fixtures, `closeApp()` force-exits (native unsaved-changes modal would hang the run). `tests/fixtures/onnx.ts` hand-encodes a tiny Identity ONNX model so model tests never hit the network.
 
 ## Decisions log
 

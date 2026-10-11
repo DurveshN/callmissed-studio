@@ -19,7 +19,7 @@ import { SettingsStore } from './services/settings-store'
 import { WorkspaceStore } from './services/workspace-store'
 import { dialogs } from './dialogs'
 import { resourcePath } from './paths'
-import { createMainWindow, sendEvent, setDirty } from './window'
+import { createMainWindow, markRendererLoading, requestOpen, sendEvent, setDirty } from './window'
 
 // Test-only overrides (isolated profile, local model manifest); never honoured in packaged builds.
 const testUserData = app.isPackaged ? undefined : process.env['STUDIO_USER_DATA']
@@ -41,12 +41,6 @@ function fileFromArgv(argv: string[]): string | null {
   )
 }
 
-function openInWindow(window: BrowserWindow, path: string): void {
-  const send = () => sendEvent(window, 'app:open-path', { path })
-  if (window.webContents.isLoading()) window.webContents.once('did-finish-load', send)
-  else send()
-}
-
 function broadcast<E extends AppEvent>(event: E, payload: EventPayload<E>): void {
   for (const window of BrowserWindow.getAllWindows()) sendEvent(window, event, payload)
 }
@@ -64,7 +58,7 @@ if (!app.requestSingleInstanceLock()) {
     if (window.isMinimized()) window.restore()
     window.focus()
     const path = fileFromArgv(argv)
-    if (path) openInWindow(window, path)
+    if (path) requestOpen(window, path)
   })
 
   void app.whenReady().then(async () => {
@@ -104,11 +98,6 @@ if (!app.requestSingleInstanceLock()) {
     })
     ml = supervisor
     supervisor.start()
-    let gpu = settings.get().gpu
-    settings.onChange((s) => {
-      if (s.gpu !== gpu) supervisor.configure()
-      gpu = s.gpu
-    })
 
     serveAppProtocol(join(__dirname, '../renderer'))
     applySecurityPolicies()
@@ -123,6 +112,7 @@ if (!app.requestSingleInstanceLock()) {
     window.webContents.on('did-start-loading', () => {
       services.releaseAll()
       setDirty(window, false)
+      markRendererLoading(window)
     })
     // Each load gets a fresh port to the ML worker (the preload of the previous page is gone).
     window.webContents.on('did-finish-load', () => supervisor.connect(window.webContents))
@@ -131,7 +121,7 @@ if (!app.requestSingleInstanceLock()) {
       if (details.reason !== 'clean-exit') window.reload()
     })
     const initial = fileFromArgv(process.argv)
-    if (initial) openInWindow(window, initial)
+    if (initial) requestOpen(window, initial)
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createMainWindow()

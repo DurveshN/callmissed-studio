@@ -12,7 +12,7 @@ export interface MlSupervisorDeps {
 
 const MAX_RESTARTS = 5
 const RESTART_WINDOW_MS = 60_000
-const RELEASE_TIMEOUT_MS = 5000
+const ACK_TIMEOUT_MS = 5000
 
 /**
  * Owns the ML utilityProcess: starts it, restarts it after crashes (with a crash-loop limit),
@@ -22,7 +22,7 @@ export class MlSupervisor {
   private child: UtilityProcess | null = null
   private readonly targets = new Set<WebContents>()
   private readonly restarts: number[] = []
-  private readonly releases = new Map<number, () => void>()
+  private readonly acks = new Map<number, () => void>()
   private nextRequest = 1
   private stopping = false
 
@@ -39,14 +39,15 @@ export class MlSupervisor {
     this.child = null
   }
 
-  /** Sends the current settings (e.g. after the GPU mode changed). */
-  configure(): void {
-    this.send({
+  /** Sends the current settings (e.g. after the GPU mode changed); resolves once the worker applied them. */
+  configure(): Promise<void> {
+    return this.request((requestId) => ({
       type: 'configure',
       modelsDir: this.deps.modelsDir,
       gpu: this.deps.gpu(),
-      packs: this.deps.packs
-    })
+      packs: this.deps.packs,
+      requestId
+    }))
   }
 
   /** Gives `contents` a port to the worker now and again after every worker restart. */
@@ -60,18 +61,23 @@ export class MlSupervisor {
 
   /** Closes the worker's sessions for these models so their files can be deleted (Windows locks open files). */
   releaseModels(ids: string[]): Promise<void> {
+    return this.request((requestId) => ({ type: 'release-models', ids, requestId }))
+  }
+
+  /** Sends a control message and resolves when the worker acknowledges it (or after a timeout). */
+  private request(build: (requestId: number) => WorkerControl): Promise<void> {
     if (!this.child) return Promise.resolve()
     const requestId = this.nextRequest++
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
-        this.releases.delete(requestId)
+        this.acks.delete(requestId)
         resolve()
-      }, RELEASE_TIMEOUT_MS)
-      this.releases.set(requestId, () => {
+      }, ACK_TIMEOUT_MS)
+      this.acks.set(requestId, () => {
         clearTimeout(timer)
         resolve()
       })
-      this.send({ type: 'release-models', ids, requestId })
+      this.send(build(requestId))
     })
   }
 
@@ -85,23 +91,23 @@ export class MlSupervisor {
     child.stderr?.on('data', (d: Buffer) => console.error(`[ml] ${d.toString().trimEnd()}`))
     child.on('message', (notice: WorkerNotice) => this.onNotice(notice))
     child.on('exit', (code) => this.onExit(child, code))
-    this.configure()
+    void this.configure()
     for (const contents of this.targets) this.openChannel(contents)
   }
 
   private onNotice(notice: WorkerNotice): void {
     if (notice.type === 'gpu-failed') this.deps.onGpuFailed(notice.message)
-    if (notice.type === 'released') {
-      this.releases.get(notice.requestId)?.()
-      this.releases.delete(notice.requestId)
+    if (notice.type === 'ack') {
+      this.acks.get(notice.requestId)?.()
+      this.acks.delete(notice.requestId)
     }
   }
 
   private onExit(child: UtilityProcess, code: number): void {
     if (this.child !== child) return
     this.child = null
-    for (const release of this.releases.values()) release()
-    this.releases.clear()
+    for (const ack of this.acks.values()) ack()
+    this.acks.clear()
     for (const contents of this.targets) if (!contents.isDestroyed()) contents.send('ml:down')
     if (this.stopping) return
 

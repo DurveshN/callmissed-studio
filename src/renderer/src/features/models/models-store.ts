@@ -12,6 +12,10 @@ interface ModelsState {
 
 export const useModelsStore = create<ModelsState>()(() => ({ statuses: [], settings: null, loaded: false }))
 
+/** Settles when the latest settings change has been applied by main (and the ML worker). */
+let settingsApplied: Promise<unknown> = Promise.resolve()
+export const whenSettingsApplied = (): Promise<unknown> => settingsApplied
+
 /** Loads model statuses + settings and keeps them in sync with main; returns an unsubscribe function. */
 export function startModelSync(): () => void {
   void Promise.all([call('models:list'), call('settings:get')])
@@ -40,8 +44,10 @@ export const modelActions = {
   updateSettings: async (patch: Partial<Settings>) => {
     const previous = useModelsStore.getState().settings
     if (previous) useModelsStore.setState({ settings: { ...previous, ...patch } })
+    const applying = call('settings:update', patch)
+    settingsApplied = applying.catch(() => undefined)
     try {
-      useModelsStore.setState({ settings: await call('settings:update', patch) })
+      useModelsStore.setState({ settings: await applying })
     } catch (error) {
       useModelsStore.setState({ settings: previous })
       notify.error(error, 'Could not save settings')

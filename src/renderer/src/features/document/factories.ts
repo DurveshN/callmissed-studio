@@ -1,25 +1,6 @@
 import type { ImageLayer, ShapeLayer, TextLayer } from '@shared/document/model'
 
-export const DEFAULT_FONT = 'Segoe UI'
-
-/** Fonts available on every Windows 10/11 install (bundled OFL fonts arrive with OCR in M3). */
-export const SYSTEM_FONTS = [
-  'Segoe UI',
-  'Arial',
-  'Calibri',
-  'Cambria',
-  'Candara',
-  'Consolas',
-  'Constantia',
-  'Corbel',
-  'Courier New',
-  'Georgia',
-  'Impact',
-  'Tahoma',
-  'Times New Roman',
-  'Trebuchet MS',
-  'Verdana'
-]
+import { DEFAULT_FONT } from '../fonts/catalog'
 
 const base = (name: string) => ({
   id: crypto.randomUUID(),

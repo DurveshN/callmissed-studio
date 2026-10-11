@@ -133,6 +133,10 @@ export const contracts = {
     request: z.undefined(),
     response: z.undefined()
   },
+  'window:renderer-ready': {
+    request: z.undefined(),
+    response: z.undefined()
+  },
   'models:list': {
     request: z.undefined(),
     response: z.array(ModelStatus)

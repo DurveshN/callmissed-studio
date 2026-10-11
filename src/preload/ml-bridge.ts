@@ -61,17 +61,6 @@ function waitForPort(): Promise<MessagePort | null> {
   })
 }
 
-/** ArrayBuffers in the top level of the input (directly or behind typed arrays) are transferred, not copied. */
-function transferables(input: unknown): ArrayBuffer[] {
-  if (!input || typeof input !== 'object') return []
-  const out = new Set<ArrayBuffer>()
-  for (const value of Object.values(input)) {
-    if (value instanceof ArrayBuffer) out.add(value)
-    else if (ArrayBuffer.isView(value) && value.buffer instanceof ArrayBuffer) out.add(value.buffer)
-  }
-  return [...out]
-}
-
 export const mlBridge = {
   run(kind: JobKind, input: unknown, onProgress?: (progress: number) => void) {
     const id = nextId++
@@ -84,7 +73,17 @@ export const mlBridge = {
           resolve({ ok: false, code: 'WORKER_UNAVAILABLE', message: 'The AI engine is not available.' })
           return
         }
-        p.postMessage({ type: 'run', id, kind, input } satisfies ToWorker, transferables(input))
+        try {
+          // The worker end is a MessagePortMain, which cannot receive transferred ArrayBuffers: copy.
+          p.postMessage({ type: 'run', id, kind, input } satisfies ToWorker)
+        } catch (error) {
+          pending.delete(id)
+          resolve({
+            ok: false,
+            code: 'INVALID_JOB',
+            message: error instanceof Error ? error.message : String(error)
+          })
+        }
       })
     })
     return {

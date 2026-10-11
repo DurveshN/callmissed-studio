@@ -4,6 +4,7 @@ import { warpQuad, type Gray, type Rgba } from '../../image/raster'
 import { postprocessDet, preprocessDet } from './det'
 import { groupLines } from './lines'
 import { buildRecBatch, cropLine, ctcDecode, recWidth, REC } from './rec'
+import { refineLine } from './refine'
 import { estimateStyle, type LineStyle } from './style'
 
 /** Lines below this recognition confidence are dropped (PaddleOCR's default drop_score). */
@@ -62,7 +63,7 @@ export async function runOcr(
     return [{ ...recognized, rect: box.rect }]
   })
   const lines: OcrLine[] = groupLines(words).map((line) => {
-    const { rect } = line
+    const rect = refineLine(src, line.rect)
     const crop = warpQuad(
       src,
       rectCorners(rect),
@@ -70,7 +71,7 @@ export async function runOcr(
       Math.max(1, Math.round(rect.height))
     )
     const { mask, ...style } = estimateStyle(crop)
-    return { ...line, style, mask }
+    return { ...line, rect, style, mask }
   })
   hooks.progress(1)
   return lines

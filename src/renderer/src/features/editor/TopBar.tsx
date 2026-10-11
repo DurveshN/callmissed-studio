@@ -9,6 +9,7 @@ import {
   MousePointer2,
   Plus,
   Redo2,
+  ScanText,
   Save,
   Slash,
   Square,
@@ -24,6 +25,8 @@ import { selectIsDirty, useDocumentStore } from '../document/store'
 import { useToolStore, type Tool } from '../tools/tool-store'
 import { useViewportStore } from '../canvas/viewport-store'
 import { useSettingsUi } from '../settings/settings-ui'
+import { detectText } from '../text-detect/detect'
+import { useDetectStore } from '../text-detect/detect-store'
 import ui from '../../ui/ui.module.css'
 import styles from './Editor.module.css'
 
@@ -71,6 +74,7 @@ export function TopBar({ onExport }: { onExport(): void }) {
   const tool = useToolStore((s) => s.tool)
   const setTool = useToolStore((s) => s.setTool)
   const zoom = useViewportStore((s) => s.scale)
+  const detecting = useDetectStore((s) => s.status !== 'idle')
 
   return (
     <header className={styles.topBar}>
@@ -105,6 +109,14 @@ export function TopBar({ onExport }: { onExport(): void }) {
         <span className={styles.divider} />
         <IconButton label="Insert image (I)" onClick={() => void commands.insertImage()}>
           <ImagePlus size={18} />
+        </IconButton>
+        <span className={styles.divider} />
+        <IconButton
+          label="Detect text (D) — on the selected image, or the whole page"
+          pressed={detecting}
+          onClick={() => void detectText()}
+        >
+          <ScanText size={18} />
         </IconButton>
       </div>
 

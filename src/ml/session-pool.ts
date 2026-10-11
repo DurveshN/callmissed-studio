@@ -39,12 +39,13 @@ export class SessionPool {
     private readonly onGpuFailed: (message: string) => void
   ) {}
 
-  configure(modelsDir: string, gpu: GpuMode): void {
+  /** Applies new settings; resolves once sessions created under the old settings are released. */
+  async configure(modelsDir: string, gpu: GpuMode): Promise<void> {
     const changed = modelsDir !== this.modelsDir || gpu !== this.gpu
     this.modelsDir = modelsDir
     this.gpu = gpu
     if (gpu === 'auto') this.gpuBroken = false
-    if (changed) void this.releaseAll()
+    if (changed) await this.releaseAll()
   }
 
   /** Absolute path of a model file (for non-ONNX assets such as dictionaries). */

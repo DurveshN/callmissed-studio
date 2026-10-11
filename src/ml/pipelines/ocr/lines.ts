@@ -1,4 +1,4 @@
-import { minAreaRect, rectCorners, type RotatedRect } from '../../image/geometry'
+import { rectAtAngle, rectCorners, type RotatedRect } from '../../image/geometry'
 
 export interface Word {
   text: string
@@ -56,14 +56,18 @@ export function groupLines(words: Word[]): Word[] {
       continue
     }
     const ordered = [...group].sort((a, b) => project(first.rect, a.rect).u - project(first.rect, b.rect).u)
-    const merged = minAreaRect(ordered.flatMap((w) => rectCorners(w.rect)))
-    // Keep the words' reading direction (minAreaRect may report the perpendicular angle for short lines).
-    const angle = ordered.reduce((s, w) => s + w.rect.angle, 0) / ordered.length
-    const chars = ordered.reduce((s, w) => s + w.text.length, 0)
+    // The line follows the words' own reading angle; a min-area rectangle of the word boxes can tilt
+    // by a few degrees, which clips ascenders when the line is cropped upright.
+    const angle = ordered.reduce((sum, w) => sum + w.rect.angle, 0) / ordered.length
+    const merged = rectAtAngle(
+      ordered.flatMap((w) => rectCorners(w.rect)),
+      angle
+    )
+    const chars = ordered.reduce((sum, w) => sum + w.text.length, 0)
     lines.push({
       text: ordered.map((w) => w.text).join(' '),
       confidence: ordered.reduce((s, w) => s + w.confidence * w.text.length, 0) / Math.max(1, chars),
-      rect: { ...merged, angle: Math.abs(merged.angle - angle) > 45 ? angle : merged.angle }
+      rect: merged
     })
   }
   return lines.sort((a, b) =>
