@@ -1,0 +1,14 @@
+node_modules/
+out/
+dist/
+release/
+coverage/
+*.log
+.env
+.env.*
+.superpowers/
+test-results/
+playwright-report/
+*.onnx
+.DS_Store
+Thumbs.db
