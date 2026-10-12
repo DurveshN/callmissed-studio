@@ -10,13 +10,20 @@ const SCALES = [0.5, 1, 2, 3]
 
 export function ExportDialog({ onClose }: { onClose(): void }) {
   const page = useDocumentStore(selectActivePage)
-  const [format, setFormat] = useState<ExportFormat>('png')
+  const [format, setFormat] = useState<ExportFormat | 'pdf'>('png')
+  const [searchable, setSearchable] = useState(true)
   const [scale, setScale] = useState(1)
   const [quality, setQuality] = useState(92)
   const [busy, setBusy] = useState(false)
   if (!page) return null
 
   const run = async () => {
+    if (format === 'pdf') {
+      // The PDF export shows its own progress (and can take a while with text recognition).
+      onClose()
+      await commands.exportPdf(searchable)
+      return
+    }
     setBusy(true)
     await commands.exportPage(format, scale, quality / 100)
     setBusy(false)
@@ -36,30 +43,39 @@ export function ExportDialog({ onClose }: { onClose(): void }) {
         }}
       >
         <h2 id="export-title" className={ui.dialogTitle}>
-          Export page
+          {format === 'pdf' ? 'Export document' : 'Export page'}
         </h2>
         <div className={styles.form}>
           <Field label="Format">
             <select
               className={ui.select}
               value={format}
-              onChange={(e) => setFormat(e.target.value as ExportFormat)}
+              onChange={(e) => setFormat(e.target.value as ExportFormat | 'pdf')}
             >
+              <option value="pdf">PDF (all pages, text stays text)</option>
               <option value="png">PNG (lossless, transparency)</option>
               <option value="jpeg">JPEG</option>
               <option value="webp">WebP</option>
             </select>
           </Field>
-          <Field label="Size">
-            <select className={ui.select} value={scale} onChange={(e) => setScale(Number(e.target.value))}>
-              {SCALES.map((s) => (
-                <option key={s} value={s}>
-                  {s}× — {Math.round(page.width * s)} × {Math.round(page.height * s)} px
-                </option>
-              ))}
-            </select>
-          </Field>
-          {format !== 'png' && (
+          {format === 'pdf' && (
+            <label className={styles.check}>
+              <input type="checkbox" checked={searchable} onChange={(e) => setSearchable(e.target.checked)} />
+              Make scanned pages searchable (recognizes their text)
+            </label>
+          )}
+          {format !== 'pdf' && (
+            <Field label="Size">
+              <select className={ui.select} value={scale} onChange={(e) => setScale(Number(e.target.value))}>
+                {SCALES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}× — {Math.round(page.width * s)} × {Math.round(page.height * s)} px
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
+          {format !== 'png' && format !== 'pdf' && (
             <Field label={`Quality — ${quality}%`}>
               <input
                 type="range"

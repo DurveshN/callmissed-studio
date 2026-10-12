@@ -16,6 +16,8 @@ export const CHANNELS = [
   'library:recent',
   'library:forget',
   'export:save-image',
+  'export:choose-pdf-path',
+  'export:write-pdf',
   'window:set-dirty',
   'window:close-confirmed',
   'window:renderer-ready',

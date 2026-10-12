@@ -31,7 +31,7 @@ export const dialogs = {
   pickImage: () => pickOne([{ name: 'Images', extensions: [...IMAGE_EXTENSIONS] }]),
   pickProjectSavePath: (suggestedName: string) =>
     pickSave(suggestedName, [{ name: 'CallMissed Studio project', extensions: [PROJECT_EXTENSION] }]),
-  pickExportPath: (suggestedName: string, format: 'png' | 'jpeg' | 'webp') => {
+  pickExportPath: (suggestedName: string, format: 'png' | 'jpeg' | 'webp' | 'pdf') => {
     const ext = format === 'jpeg' ? 'jpg' : format
     return pickSave(`${suggestedName}.${ext}`, [{ name: format.toUpperCase(), extensions: [ext] }])
   }

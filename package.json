@@ -26,6 +26,8 @@
     "test:e2e": "npm run build && playwright test"
   },
   "dependencies": {
+    "@cantoo/fontkit": "2.0.12",
+    "@cantoo/pdf-lib": "2.11.1",
     "fflate": "0.8.3",
     "onnxruntime-node": "1.30.0",
     "zod": "4.6.5"

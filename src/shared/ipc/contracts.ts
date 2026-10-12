@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { AssetMeta, Id, StudioDocument } from '../document/model'
 import { History } from '../document/history'
+import { PdfPlan } from '../pdf/plan'
 import { ModelId, ModelStatus } from '../ml/models'
 import { Settings, SettingsPatch } from '../settings'
 import type { AppEvent, Channel } from './channels'
@@ -124,6 +125,21 @@ export const contracts = {
       format: z.enum(['png', 'jpeg', 'webp'])
     }),
     response: z.string().nullable()
+  },
+  /** Asks where to save; only a path chosen here can be written by export:write-pdf (once). */
+  'export:choose-pdf-path': {
+    request: z.object({ suggestedName: z.string().max(260) }),
+    response: z.string().nullable()
+  },
+  'export:write-pdf': {
+    request: z.object({
+      path: z.string().max(MAX_PATH),
+      docId: Id,
+      /** The document's original PDF, when pages are copied from it. */
+      sourceAssetId: Id.nullable(),
+      plan: PdfPlan
+    }),
+    response: z.undefined()
   },
   'window:set-dirty': {
     request: z.object({ dirty: z.boolean() }),

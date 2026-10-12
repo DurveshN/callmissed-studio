@@ -90,3 +90,19 @@ export function usePdfPage(
   }, [docId, assetId, pageIndex, pixelsPerPoint])
   return pageIndex === null ? null : canvas
 }
+
+/**
+ * Geometry of a source page as displayed (points; pdf.js's viewport transform at scale 1, which
+ * includes /Rotate and the crop box), and whether it holds real text (scanned pages don't).
+ */
+export async function pdfPageInfo(
+  docId: string,
+  assetId: string,
+  pageIndex: number
+): Promise<{ transform: number[]; width: number; height: number; hasText: boolean }> {
+  const page = await (await sourcePdf(docId, assetId)).getPage(pageIndex + 1)
+  const viewport = page.getViewport({ scale: 1 })
+  const content = await page.getTextContent()
+  const hasText = content.items.some((item) => 'str' in item && item.str.trim() !== '')
+  return { transform: [...viewport.transform], width: viewport.width, height: viewport.height, hasText }
+}

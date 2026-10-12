@@ -9,7 +9,9 @@ import { registerAppScheme, serveAppProtocol } from './app-protocol'
 import { applySecurityPolicies } from './security'
 import { registerAppHandlers } from './ipc/app-handlers'
 import { registerMlHandlers } from './ipc/ml-handlers'
+import { registerPdfHandlers } from './ipc/pdf-handlers'
 import { registerProjectHandlers } from './ipc/project-handlers'
+import { FontFiles } from './services/font-files'
 import { registerWindowHandlers } from './ipc/window-handlers'
 import { LibraryDb } from './services/library-db'
 import { MlSupervisor } from './services/ml-supervisor'
@@ -109,6 +111,11 @@ if (!app.requestSingleInstanceLock()) {
     applySecurityPolicies()
     registerAppHandlers()
     registerProjectHandlers(projects, library)
+    // Bundled fonts: next to the built renderer, or in its source folder when running from the dev server.
+    registerPdfHandlers(
+      projects,
+      new FontFiles([join(__dirname, '../renderer'), join(app.getAppPath(), 'src', 'renderer', 'public')])
+    )
     registerWindowHandlers()
     registerMlHandlers(models, supervisor, settings)
 

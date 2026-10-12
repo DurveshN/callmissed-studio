@@ -5,7 +5,10 @@ import { loadAssetImage } from '../assets/asset-cache'
 import { fitCentered, newImageLayer } from '../document/factories'
 import { addLayer } from '../document/layer-ops'
 import { selectActivePage, selectIsDirty, useDocumentStore } from '../document/store'
+import { buildPdfPlan } from '../export/pdf-plan'
 import { encodeActivePage, type ExportFormat } from '../export/render-page'
+import { ensureModel } from '../models/ensure-model'
+import { runTask } from '../tasks/task'
 import { closeDocument, openPath, recoverDocument, saveDocument } from '../session/session'
 import { useViewportStore } from '../canvas/viewport-store'
 
@@ -100,6 +103,33 @@ export const commands = {
       const path = await call('export:save-image', { bytes, suggestedName: `${doc.name}${suffix}`, format })
       if (path) notify.info('Exported')
     }, 'Export failed')
+  },
+
+  /**
+   * Exports every page as one PDF: original PDF pages keep their vectors and text, edits are drawn
+   * over them, and (when `searchable`) pages without real text get invisible recognized text.
+   */
+  async exportPdf(searchable: boolean): Promise<void> {
+    const { doc } = useDocumentStore.getState()
+    if (!doc) return
+    const path = await call('export:choose-pdf-path', { suggestedName: doc.name })
+    if (!path) return
+    const ocr = searchable && (await ensureModel('ocr', 'Making scanned pages searchable'))
+    await runTask('Exporting PDF…', async (signal, report) => {
+      const plan = await buildPdfPlan(doc, {
+        searchable: ocr,
+        signal,
+        progress: (done, total) => report((done / total) * 0.8, `Preparing page ${done} of ${total}…`)
+      })
+      report(0.85, 'Writing the PDF…')
+      await call('export:write-pdf', {
+        path,
+        docId: doc.id,
+        sourceAssetId: doc.source.kind === 'pdf' ? doc.source.assetId : null,
+        plan
+      })
+      notify.info('Exported')
+    })
   },
 
   undo: () => useDocumentStore.getState().undo(),
