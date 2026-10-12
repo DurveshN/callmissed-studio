@@ -7,28 +7,27 @@ import {
 } from '../../src/renderer/src/features/text-detect/pdf-runs'
 
 describe('PDF font names', () => {
+  const parsed = (name: string, hints = {}) => {
+    const { family, weight, italic, known } = parsePdfFont(name, hints)
+    return [family, weight, italic, known]
+  }
+
   it('reads family, weight and italic from common naming schemes', () => {
-    expect(parsePdfFont('ABCDEF+Calibri-Bold')).toEqual({ family: 'Calibri', weight: 700, italic: false })
-    expect(parsePdfFont('TimesNewRomanPS-BoldItalicMT')).toEqual({
-      family: 'Times New Roman',
-      weight: 700,
-      italic: true
-    })
-    expect(parsePdfFont('Arial,Italic')).toEqual({ family: 'Arial', weight: 400, italic: true })
-    expect(parsePdfFont('ArialMT')).toEqual({ family: 'Arial', weight: 400, italic: false })
-    expect(parsePdfFont('Montserrat-SemiBold')).toEqual({ family: 'Montserrat', weight: 600, italic: false })
-    expect(parsePdfFont('Inter-Regular-1275')).toEqual({ family: 'Inter', weight: 400, italic: false })
-    expect(parsePdfFont('SegoeUI-Light')).toEqual({ family: 'Segoe UI', weight: 300, italic: false })
+    expect(parsed('ABCDEF+Calibri-Bold')).toEqual(['Calibri', 700, false, true])
+    expect(parsed('TimesNewRomanPS-BoldItalicMT')).toEqual(['Times New Roman', 700, true, true])
+    expect(parsed('Arial,Italic')).toEqual(['Arial', 400, true, true])
+    expect(parsed('ArialMT')).toEqual(['Arial', 400, false, true])
+    expect(parsed('Montserrat-SemiBold')).toEqual(['Montserrat', 600, false, true])
+    expect(parsed('Inter-Regular-1275')).toEqual(['Inter', 400, false, true])
+    expect(parsed('SegoeUI-Light')).toEqual(['Segoe UI', 300, false, true])
   })
 
-  it('falls back by kind for families the editor does not have', () => {
-    expect(parsePdfFont('XYZABC+Garamond-Bold', { serif: true })).toEqual({
-      family: 'Times New Roman',
-      weight: 700,
-      italic: false
-    })
-    expect(parsePdfFont('Menlo', { mono: true }).family).toBe('Courier New')
-    expect(parsePdfFont('Helvetica').family).toBe('Arial')
+  it('falls back by kind for families the editor does not have, and says so', () => {
+    expect(parsed('XYZABC+Garamond-Bold', { serif: true })).toEqual(['Times New Roman', 700, false, false])
+    expect(parsed('Menlo', { mono: true })).toEqual(['Courier New', 400, false, false])
+    expect(parsed('GlyphLessFont')).toEqual(['Arial', 400, false, false])
+    expect(parsePdfFont('ABCDEF+ComicSansMS-Bold').pdfFamily).toBe('Comic Sans MS')
+    expect(parsePdfFont('GillSansMT-Italic').pdfFamily).toBe('Gill Sans')
   })
 })
 
@@ -87,9 +86,10 @@ describe('ink colour of a PDF line', () => {
     for (let y = 15; y < 25; y++) for (let x = 20; x < 80; x++) data.set([20, 40, 120, 255], (y * W + x) * 4) // navy ink
     expect(
       inkColor({ width: W, height: H, data }, { cx: 50, cy: 20, width: 90, height: 30, angle: 0 })
-    ).toEqual({
-      color: '#142878',
-      background: '#faf5eb'
-    })
+    ).toEqual({ color: '#142878', background: '#faf5eb', inked: true })
+    // Invisible text (an OCR layer over nothing) leaves no ink.
+    const blank = new Uint8ClampedArray(W * H * 4).fill(250)
+    const box = { cx: 50, cy: 20, width: 90, height: 30, angle: 0 }
+    expect(inkColor({ width: W, height: H, data: blank }, box).inked).toBe(false)
   })
 })

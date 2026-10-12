@@ -1,6 +1,8 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
+import fontkit from '@cantoo/fontkit'
+import { PDFDocument, TextRenderingMode } from '@cantoo/pdf-lib'
 import { strFromU8, unzipSync } from 'fflate'
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import { closeApp, launchApp, makePdf, openViaMain, seedModels, stubSaveDialog, tempDir } from './helpers'
@@ -147,4 +149,44 @@ test('reorders, deletes and restores pages, and exports them in the new order', 
 
   await window.keyboard.press('Control+z')
   expect(await order()).toEqual(['Chapter Three', 'Chapter Two', 'Chapter One'])
+})
+
+test('uses the PDF’s own installed font and skips invisible text', async () => {
+  await window.getByRole('button', { name: 'Close document' }).click()
+  const dontSave = window.getByRole('button', { name: 'Don’t save' })
+  if (await dontSave.isVisible().catch(() => false)) await dontSave.click()
+  const doc = await PDFDocument.create()
+  doc.registerFontkit(fontkit)
+  // Comic Sans MS ships with Windows but is not in the editor's font list.
+  const comic = await doc.embedFont(readFileSync('C:/Windows/Fonts/comic.ttf'), { subset: true })
+  const page = doc.addPage([500, 300])
+  page.drawText('Party at seven', { x: 40, y: 220, size: 28, font: comic })
+  // An invisible OCR-style line over blank paper: nothing to edit there.
+  page.drawText('hidden search text', {
+    x: 40,
+    y: 80,
+    size: 14,
+    font: comic,
+    renderMode: TextRenderingMode.Invisible
+  })
+  const source = join(dir, 'invite.pdf')
+  writeFileSync(source, await doc.save())
+  await openViaMain(app, source)
+  await expect(window.getByTestId('doc-name')).toHaveText('invite')
+
+  await window.keyboard.press('d')
+  const bar = window.getByTestId('detect-bar')
+  await expect(bar).toContainText('1 text line found', { timeout: 30_000 })
+  await bar.getByRole('button', { name: 'Convert all' }).click()
+  await expect(bar).toBeHidden({ timeout: 60_000 })
+  const out = join(dir, 'invite.cmsp')
+  await stubSaveDialog(app, out)
+  await window.keyboard.press('Control+Shift+s')
+  await expect.poll(() => readFileSafe(out)).not.toBeNull()
+  const saved = JSON.parse(strFromU8(unzipSync(readFileSync(out))['document.json'] as Uint8Array)) as {
+    pages: { layers: { text?: string; fontFamily?: string }[] }[]
+  }
+  expect(saved.pages[0]?.layers.map((l) => [l.text, l.fontFamily])).toEqual([
+    ['Party at seven', 'Comic Sans MS']
+  ])
 })

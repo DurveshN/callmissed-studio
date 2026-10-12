@@ -6,6 +6,10 @@ export interface PdfFontStyle {
   family: string
   weight: number
   italic: boolean
+  /** The PDF's family is one the editor has (otherwise `family` is a stand-in of the same kind). */
+  known: boolean
+  /** The family as the PDF names it, spaced ("ComicSansMS" → "Comic Sans MS"). */
+  pdfFamily: string
 }
 
 const WEIGHTS: [RegExp, number][] = [
@@ -36,7 +40,8 @@ export function parsePdfFont(name: string, hints: { serif?: boolean; mono?: bool
   const italic = /italic|oblique/.test(style)
   const known = ALL_FONTS.find((f) => squash(f.family) === squash(familyPart))
   const family = known?.family ?? (hints.mono ? 'Courier New' : hints.serif ? 'Times New Roman' : 'Arial')
-  return { family, weight, italic }
+  const pdfFamily = familyPart.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+  return { family, weight, italic, known: !!known, pdfFamily }
 }
 
 /** A run of text as pdf.js reports it, already in page units (y down). */
@@ -122,12 +127,12 @@ function inside(rect: RotatedRect, x: number, y: number): boolean {
 
 /**
  * Text colour inside `rect`: the pixels farthest from the box's typical (background) colour.
- * Returns the background too.
+ * Returns the background too, and whether any ink is there at all.
  */
 export function inkColor(
   image: { width: number; height: number; data: Uint8ClampedArray | Uint8Array },
   rect: RotatedRect
-): { color: string; background: string } {
+): { color: string; background: string; inked: boolean } {
   const corners = rectCorners(rect)
   const x0 = Math.max(0, Math.floor(Math.min(...corners.map((c) => c.x))))
   const y0 = Math.max(0, Math.floor(Math.min(...corners.map((c) => c.y))))
@@ -144,7 +149,7 @@ export function inkColor(
   }
   const hex = ([r, g, b]: [number, number, number]) =>
     `#${[r, g, b].map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`
-  if (pixels.length === 0) return { color: '#000000', background: '#ffffff' }
+  if (pixels.length === 0) return { color: '#000000', background: '#ffffff', inked: false }
   const median = (list: [number, number, number][]): [number, number, number] =>
     [0, 1, 2].map((c) => {
       const values = list.map((p) => p[c] as number).sort((a, b) => a - b)
@@ -156,5 +161,10 @@ export function inkColor(
     .filter((e) => e.d > 60)
     .sort((a, b) => b.d - a.d)
   const ink = far.slice(0, Math.max(1, Math.ceil(far.length / 4))).map((e) => e.p)
-  return { color: far.length ? hex(median(ink)) : '#000000', background: hex(background) }
+  // Nothing stands out from the background: the text is invisible (e.g. an OCR layer) or blank.
+  return {
+    color: far.length ? hex(median(ink)) : '#000000',
+    background: hex(background),
+    inked: far.length > 0
+  }
 }

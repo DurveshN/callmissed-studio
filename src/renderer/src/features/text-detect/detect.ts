@@ -106,8 +106,8 @@ export function cancelDetect(): void {
 const matches = new Map<string, Promise<FontMatchResult | null>>()
 
 function matchFor(line: DetectedLine): Promise<FontMatchResult | null> {
-  // PDF text names its font; nothing to match.
-  if (line.native) return Promise.resolve(null)
+  // PDF text in a family the editor has: nothing to match.
+  if (line.native?.known) return Promise.resolve(null)
   let pending = matches.get(line.id)
   if (!pending) {
     pending = matchFont({
@@ -337,7 +337,7 @@ export function convertLines(ids: string[]): Promise<void> {
       const fonts = await fontsFor(lines, snap)
       return lines.map((line) =>
         line.native
-          ? nativeTextLayer(line, line.native, snap)
+          ? nativeTextLayer(line, line.native, snap, fonts.get(line.id) ?? null)
           : textLayerFor(line, snap, fonts.get(line.id) ?? null)
       )
     },
