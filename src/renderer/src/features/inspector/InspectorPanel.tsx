@@ -293,7 +293,6 @@ function ArrangeSection({ ids }: { ids: string[] }) {
 function PageSection() {
   const page = useDocumentStore(selectActivePage)
   if (!page) return null
-  const resizeTo = (side: number, current: number) => void resizePage(side / current)
   return (
     <section className={styles.section} data-testid="page-section">
       <h3 className={styles.heading}>Page</h3>
@@ -325,7 +324,7 @@ function PageSection() {
           suffix="px"
           min={MIN_PAGE_SIDE}
           max={MAX_PAGE_SIDE}
-          onChange={(w) => resizeTo(w, page.width)}
+          onChange={(width) => void resizePage({ width })}
         />
         <NumberField
           label="Height"
@@ -333,7 +332,7 @@ function PageSection() {
           suffix="px"
           min={MIN_PAGE_SIDE}
           max={MAX_PAGE_SIDE}
-          onChange={(h) => resizeTo(h, page.height)}
+          onChange={(height) => void resizePage({ height })}
         />
       </div>
     </section>

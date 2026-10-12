@@ -91,10 +91,14 @@ test('resizes the page with its aspect ratio kept', async () => {
   expect([png.width, png.height]).toEqual([200, 150])
   near(png.at(25, 25), RED)
   near(png.at(175, 125), WHITE)
+  // Leave the field first: inside it, Ctrl+Z undoes the typing, not the document.
+  await width.blur()
   await window.keyboard.press('Control+z')
+  await expect(width).toHaveValue('400')
 })
 
 test('crops the page to the dragged box', async () => {
+  await expect(window.getByTestId('page-section').getByLabel('Width')).toHaveValue(String(W))
   await window.keyboard.press('Control+1')
   await window.keyboard.press('c')
   await expect(window.getByTestId('crop-bar')).toBeVisible()
