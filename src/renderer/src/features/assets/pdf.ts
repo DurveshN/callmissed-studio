@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getDocument, GlobalWorkerOptions, type PDFDocumentProxy } from 'pdfjs-dist'
+import { getDocument, GlobalWorkerOptions, Util, type PDFDocumentProxy } from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { PDF_RENDER_SCALE } from '@shared/document/model'
 import { call } from '../../lib/ipc'
@@ -15,6 +15,8 @@ export function openPdf(bytes: Uint8Array): Promise<PDFDocumentProxy> {
   return getDocument({
     // pdf.js transfers the buffer to its worker, so give it a copy.
     data: bytes.slice(),
+    // Keeps each font's real name ("ABCDEF+Calibri-Bold"), which Detect Text uses for PDF text.
+    fontExtraProperties: true,
     cMapUrl: `${base}cmaps/`,
     standardFontDataUrl: `${base}standard_fonts/`,
     wasmUrl: `${base}wasm/`,
@@ -105,4 +107,63 @@ export async function pdfPageInfo(
   const content = await page.getTextContent()
   const hasText = content.items.some((item) => 'str' in item && item.str.trim() !== '')
   return { transform: [...viewport.transform], width: viewport.width, height: viewport.height, hasText }
+}
+
+/** A run of a page's text in page units (`pixelsPerPoint` per point, y down), with its font. */
+export interface PdfTextRun {
+  text: string
+  x: number
+  y: number
+  angle: number
+  size: number
+  width: number
+  font: string
+  ascent: number
+  descent: number
+}
+
+/** The page's text runs and, per font, its PDF name and kind (fonts are resolved by loading the page). */
+export async function pdfTextRuns(
+  docId: string,
+  assetId: string,
+  pageIndex: number,
+  pixelsPerPoint = PDF_RENDER_SCALE
+): Promise<{ runs: PdfTextRun[]; fonts: Map<string, { name: string; serif: boolean; mono: boolean }> }> {
+  const page = await (await sourcePdf(docId, assetId)).getPage(pageIndex + 1)
+  const viewport = page.getViewport({ scale: pixelsPerPoint })
+  const content = await page.getTextContent()
+  // Font objects (with their names) are available once the page's operators are loaded.
+  await page.getOperatorList()
+  const fonts = new Map<string, { name: string; serif: boolean; mono: boolean }>()
+  const runs: PdfTextRun[] = []
+  for (const item of content.items) {
+    if (!('str' in item) || !item.str) continue
+    const tx = Util.transform(viewport.transform, item.transform)
+    const style = content.styles[item.fontName]
+    if (style?.vertical) continue
+    if (!fonts.has(item.fontName)) {
+      const font = (page.commonObjs.has(item.fontName) ? page.commonObjs.get(item.fontName) : null) as {
+        name?: string
+        isSerifFont?: boolean
+        isMonospace?: boolean
+      } | null
+      fonts.set(item.fontName, {
+        name: font?.name ?? style?.fontFamily ?? '',
+        serif: !!font?.isSerifFont,
+        mono: !!font?.isMonospace
+      })
+    }
+    runs.push({
+      text: item.str,
+      x: tx[4] as number,
+      y: tx[5] as number,
+      angle: (Math.atan2(tx[1] as number, tx[0] as number) * 180) / Math.PI,
+      size: Math.hypot(tx[2] as number, tx[3] as number),
+      width: item.width * pixelsPerPoint,
+      font: item.fontName,
+      ascent: style?.ascent ?? 0.8,
+      descent: style?.descent ?? -0.2
+    })
+  }
+  return { runs, fonts }
 }

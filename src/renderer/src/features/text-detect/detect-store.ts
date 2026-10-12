@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { OcrLine } from '@shared/ml/jobs'
 import type { Point, RasterSnapshot, RasterTarget } from '../raster/raster-target'
+import type { NativeText } from './pdf-text'
 
 export interface DetectedLine extends OcrLine {
   id: string
@@ -8,6 +9,8 @@ export interface DetectedLine extends OcrLine {
   corners: Point[]
   /** Looks handwritten or unreliable: skipped by "Convert all", still convertible by clicking it. */
   handwriting: boolean
+  /** Text a PDF page states itself (exact words, font and baseline); absent for recognized text. */
+  native?: NativeText
 }
 
 export type DetectStatus = 'idle' | 'preparing' | 'detecting' | 'ready' | 'converting' | 'error'

@@ -17,6 +17,12 @@ export function pointsPerUnit(doc: StudioDocument): number {
 export interface PlanOptions {
   /** Add invisible recognized text to pages that show no real text (scans, photos). */
   searchable: boolean
+  /**
+   * Pages whose original PDF content was painted over (edited text, removed objects) are written as
+   * pictures, so the replaced text is really gone; otherwise it stays in the copied page, hidden
+   * under the patch but still selectable and searchable.
+   */
+  flattenEdited: boolean
   signal?: AbortSignal
   progress?(done: number, total: number): void
 }
@@ -108,7 +114,8 @@ async function pagePlan(
   let patches = page.patches.map(({ assetId, x, y, width, height }) => ({ assetId, x, y, width, height }))
   let hasText = false
 
-  if (bg.kind === 'pdf' && !page.adjustments) {
+  const flatten = bg.kind === 'pdf' && options.flattenEdited && page.patches.length > 0
+  if (bg.kind === 'pdf' && !page.adjustments && !flatten) {
     // The original page is copied as it is (vectors and text kept); edits are drawn over it.
     const info = await pdfPageInfo(doc.id, doc.source.assetId, bg.pageIndex)
     base = { kind: 'copy', index: bg.pageIndex, toPdf: viewToPdf(info.transform, info.height) }
@@ -116,7 +123,7 @@ async function pagePlan(
   } else if (bg.kind === 'image' && !page.adjustments) {
     background = await images.picture(bg.assetId, undefined)
   } else {
-    // Adjusted page picture (or adjusted PDF page): drawn as one image with the adjustments applied.
+    // Adjusted page picture, or an edited PDF page being flattened: drawn as one image.
     const snap = await snapshot(doc, { kind: 'page', pageId: page.id })
     if (page.adjustments) adjustPixels(snap.image.data, page.adjustments)
     background = images.add(await encodePng(snap.image.data, snap.image.width, snap.image.height))

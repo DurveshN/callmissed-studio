@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
+import { strFromU8, unzipSync } from 'fflate'
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import { closeApp, launchApp, makePdf, openViaMain, seedModels, stubSaveDialog, tempDir } from './helpers'
 
@@ -31,7 +32,7 @@ function readFileSafe(path: string): Buffer | null {
 }
 
 /** Exports the document as PDF and returns each page's size and text, read back with pdf.js. */
-async function exportPdf(searchable: boolean): Promise<{ size: number[]; text: string }[]> {
+async function exportPdf(searchable: boolean, flatten = true): Promise<{ size: number[]; text: string }[]> {
   const out = join(dir, `export-${Date.now()}.pdf`)
   await stubSaveDialog(app, out)
   await window.keyboard.press('Control+e')
@@ -39,6 +40,9 @@ async function exportPdf(searchable: boolean): Promise<{ size: number[]; text: s
   await dialog.getByLabel('Format').selectOption('pdf')
   const check = dialog.getByLabel(/Make scanned pages searchable/)
   if ((await check.isChecked()) !== searchable) await check.click()
+  const removeReplaced = dialog.getByLabel(/Remove replaced text/)
+  if ((await removeReplaced.count()) && (await removeReplaced.isChecked()) !== flatten)
+    await removeReplaced.click()
   await dialog.getByRole('button', { name: 'Export' }).click()
   await expect.poll(() => readFileSafe(out), { timeout: 120_000 }).not.toBeNull()
   await expect(window.getByTestId('task-bar')).toBeHidden({ timeout: 120_000 })
@@ -78,9 +82,41 @@ test('exports an edited PDF: original pages keep their text, new text is real te
   expect(pages[1]?.text).toContain('Page two')
 })
 
+test('reads a PDF page’s own text exactly and converts it with its font', async () => {
+  await window.keyboard.press('Escape')
+  await window.keyboard.press('d')
+  const bar = window.getByTestId('detect-bar')
+  await expect(bar).toContainText('1 text line found', { timeout: 30_000 })
+  await bar.getByRole('button', { name: 'Convert all' }).click()
+  await expect(bar).toBeHidden({ timeout: 60_000 })
+
+  const out = join(dir, 'converted.cmsp')
+  await stubSaveDialog(app, out)
+  await window.keyboard.press('Control+Shift+s')
+  await expect.poll(() => readFileSafe(out)).not.toBeNull()
+  const doc = JSON.parse(strFromU8(unzipSync(readFileSync(out))['document.json'] as Uint8Array)) as {
+    pages: { layers: { text?: string; fontFamily?: string; fontSize?: number; origin?: string }[] }[]
+  }
+  // Helvetica 24 pt in the PDF: Arial (its Windows equivalent) at 24 pt = 48 page units.
+  expect(doc.pages[0]?.layers.find((l) => l.text === 'Page one')).toMatchObject({
+    fontFamily: 'Arial',
+    fontSize: 48,
+    origin: 'pdf-native'
+  })
+})
+
+test('removes replaced PDF text from the export unless asked to keep pages as vectors', async () => {
+  const count = (text: string | undefined) => (text ?? '').split('Page one').length - 1
+  const flattened = await exportPdf(false, true)
+  expect(count(flattened[0]?.text)).toBe(1) // only the new, editable text
+  expect(flattened[1]?.text).toContain('Page two') // untouched page still vector text
+  const kept = await exportPdf(false, false)
+  expect(count(kept[0]?.text)).toBe(2) // the original stays in the copied page, under the patch
+})
+
 test('makes an image searchable when exported as PDF', async () => {
+  // Saved by the previous test, so it closes without asking.
   await window.getByRole('button', { name: 'Close document' }).click()
-  await window.getByRole('button', { name: 'Don’t save' }).click()
   await openViaMain(app, resolve('tests/fixtures/ocr-poster.png'))
   await expect(window.getByTestId('doc-name')).toHaveText('ocr-poster')
   const [page] = await exportPdf(true)

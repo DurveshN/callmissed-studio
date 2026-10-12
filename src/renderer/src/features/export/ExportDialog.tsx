@@ -12,6 +12,8 @@ export function ExportDialog({ onClose }: { onClose(): void }) {
   const page = useDocumentStore(selectActivePage)
   const [format, setFormat] = useState<ExportFormat | 'pdf'>('png')
   const [searchable, setSearchable] = useState(true)
+  const [flatten, setFlatten] = useState(true)
+  const fromPdf = useDocumentStore((s) => s.doc?.source.kind === 'pdf')
   const [scale, setScale] = useState(1)
   const [quality, setQuality] = useState(92)
   const [busy, setBusy] = useState(false)
@@ -21,7 +23,7 @@ export function ExportDialog({ onClose }: { onClose(): void }) {
     if (format === 'pdf') {
       // The PDF export shows its own progress (and can take a while with text recognition).
       onClose()
-      await commands.exportPdf(searchable)
+      await commands.exportPdf(searchable, flatten)
       return
     }
     setBusy(true)
@@ -62,6 +64,15 @@ export function ExportDialog({ onClose }: { onClose(): void }) {
             <label className={styles.check}>
               <input type="checkbox" checked={searchable} onChange={(e) => setSearchable(e.target.checked)} />
               Make scanned pages searchable (recognizes their text)
+            </label>
+          )}
+          {format === 'pdf' && fromPdf && (
+            <label
+              className={styles.check}
+              title="Without this, text you replaced stays in the file under the edit, where it can still be selected and searched."
+            >
+              <input type="checkbox" checked={flatten} onChange={(e) => setFlatten(e.target.checked)} />
+              Remove replaced text (edited pages become images)
             </label>
           )}
           {format !== 'pdf' && (
