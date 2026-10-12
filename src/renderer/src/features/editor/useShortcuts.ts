@@ -6,6 +6,7 @@ import { cancelDetect, detectText } from '../text-detect/detect'
 import { useDetectStore } from '../text-detect/detect-store'
 import { applySelection, clearSelection } from '../magic-select/magic-select'
 import { useSelectStore } from '../magic-select/select-store'
+import { applyCrop } from '../page-geometry/crop'
 import { TOOL_SHORTCUTS, useToolStore } from '../tools/tool-store'
 
 function isTyping(target: EventTarget | null): boolean {
@@ -59,6 +60,7 @@ export function useShortcuts(onExport: () => void): void {
       }
 
       const objectSelected = useSelectStore.getState().mask !== null
+      if (key === 'enter' && useToolStore.getState().tool === 'crop') return run(() => void applyCrop())
       if (key === 'delete' || key === 'backspace') {
         return run(() => (objectSelected ? applySelection('delete') : deleteLayers(selection)))
       }

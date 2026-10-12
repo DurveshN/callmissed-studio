@@ -1,5 +1,6 @@
 import {
   Circle,
+  Crop,
   Download,
   Eraser,
   FolderOpen,
@@ -46,7 +47,8 @@ const TOOLS: { tool: Tool; label: string; key: string; icon: ReactNode }[] = [
 /** Tools that edit the pixels of the page or of an image layer. */
 const PIXEL_TOOLS: { tool: Tool; label: string; key: string; icon: ReactNode }[] = [
   { tool: 'magic', label: 'Magic select — click an object', key: 'W', icon: <WandSparkles size={18} /> },
-  { tool: 'erase', label: 'Eraser — paint over what to remove', key: 'B', icon: <Eraser size={18} /> }
+  { tool: 'erase', label: 'Eraser — paint over what to remove', key: 'B', icon: <Eraser size={18} /> },
+  { tool: 'crop', label: 'Crop — the selected image, or the page', key: 'C', icon: <Crop size={18} /> }
 ]
 
 function IconButton(props: {

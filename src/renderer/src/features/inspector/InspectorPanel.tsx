@@ -1,5 +1,5 @@
 import { useShallow } from 'zustand/react/shallow'
-import { AlignCenter, AlignLeft, AlignRight, Italic } from 'lucide-react'
+import { AlignCenter, AlignLeft, AlignRight, Crop, Italic, RotateCcw, RotateCw } from 'lucide-react'
 import type { Layer, ShapeLayer, TextLayer } from '@shared/document/model'
 import { deleteLayers, renameDocument, updateLayer } from '../document/layer-ops'
 import { ARRANGE_ACTIONS, arrange, canArrange } from '../arrange/arrange'
@@ -8,6 +8,8 @@ import { ALL_FONTS, availableWeights, fontByFamily } from '../fonts/catalog'
 import { selectActivePage, selectSelectedLayers, useDocumentStore } from '../document/store'
 import { ColorField, Field, NumberField } from '../../ui/fields'
 import ui from '../../ui/ui.module.css'
+import { MAX_PAGE_SIDE, MIN_PAGE_SIDE, resizePage, rotatePage } from '../page-geometry/page-ops'
+import { useToolStore } from '../tools/tool-store'
 import { AdjustSection } from './AdjustSection'
 import styles from './InspectorPanel.module.css'
 
@@ -287,6 +289,57 @@ function ArrangeSection({ ids }: { ids: string[] }) {
   )
 }
 
+/** Page geometry: turn, crop and resize (aspect ratio kept) the page with everything on it. */
+function PageSection() {
+  const page = useDocumentStore(selectActivePage)
+  if (!page) return null
+  const resizeTo = (side: number, current: number) => void resizePage(side / current)
+  return (
+    <section className={styles.section} data-testid="page-section">
+      <h3 className={styles.heading}>Page</h3>
+      <div className={styles.row}>
+        <button
+          className={ui.iconButton}
+          aria-label="Rotate page left"
+          title="Rotate page left"
+          onClick={() => void rotatePage(false)}
+        >
+          <RotateCcw size={16} />
+        </button>
+        <button
+          className={ui.iconButton}
+          aria-label="Rotate page right"
+          title="Rotate page right"
+          onClick={() => void rotatePage(true)}
+        >
+          <RotateCw size={16} />
+        </button>
+        <button className={ui.button} onClick={() => useToolStore.getState().setTool('crop')}>
+          <Crop size={14} /> Crop page
+        </button>
+      </div>
+      <div className={styles.grid}>
+        <NumberField
+          label="Width"
+          value={page.width}
+          suffix="px"
+          min={MIN_PAGE_SIDE}
+          max={MAX_PAGE_SIDE}
+          onChange={(w) => resizeTo(w, page.width)}
+        />
+        <NumberField
+          label="Height"
+          value={page.height}
+          suffix="px"
+          min={MIN_PAGE_SIDE}
+          max={MAX_PAGE_SIDE}
+          onChange={(h) => resizeTo(h, page.height)}
+        />
+      </div>
+    </section>
+  )
+}
+
 function PageAdjustSection() {
   const page = useDocumentStore(selectActivePage)
   if (!page) return null
@@ -315,11 +368,22 @@ export function InspectorPanel() {
   return (
     <div className={styles.panel} data-testid="inspector">
       {!layer && <DocumentSection />}
+      {!layer && <PageSection />}
       {!layer && <PageAdjustSection />}
       {layer && <GeometrySection layer={layer} />}
       {layer && <ArrangeSection ids={[layer.id]} />}
       {layer?.type === 'text' && <TextSection layer={layer} />}
       {layer?.type === 'shape' && <ShapeSection layer={layer} />}
+      {layer?.type === 'image' && (
+        <section className={styles.section}>
+          <h3 className={styles.heading}>Image</h3>
+          <div className={styles.row}>
+            <button className={ui.button} onClick={() => useToolStore.getState().setTool('crop')}>
+              <Crop size={14} /> Crop image
+            </button>
+          </div>
+        </section>
+      )}
       {layer?.type === 'image' && (
         <AdjustSection
           target={{ kind: 'layer', pageId, layerId: layer.id }}

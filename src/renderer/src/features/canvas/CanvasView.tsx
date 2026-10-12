@@ -18,6 +18,8 @@ import { clearSelection, selectAt, selectBox } from '../magic-select/magic-selec
 import { SelectBar } from '../magic-select/SelectBar'
 import { SelectOverlay } from '../magic-select/SelectOverlay'
 import { TaskBar } from '../tasks/TaskBar'
+import { CropBar } from '../page-geometry/CropBar'
+import { CropOverlay } from '../page-geometry/CropOverlay'
 import { LAYER_NAME, LayerNode } from './LayerNode'
 import { PageBackground } from './PageBackground'
 import { registerPageGroup } from './stage-registry'
@@ -134,7 +136,7 @@ export function CanvasView() {
     const stage = tr?.getStage()
     if (!tr || !stage || !layers) return
     // Pixel tools work on the picture; transform handles would get in their way.
-    const pixelTool = tool === 'magic' || tool === 'erase'
+    const pixelTool = tool === 'magic' || tool === 'erase' || tool === 'crop'
     const selectable = layers.filter(
       (l) => !pixelTool && selection.includes(l.id) && l.visible && !l.locked && l.id !== editingTextId
     )
@@ -267,6 +269,9 @@ export function CanvasView() {
       return
     }
     if (e.evt.button !== 0) return
+
+    // The crop box and its handles handle their own dragging.
+    if (tool === 'crop') return
 
     if (tool === 'select') {
       if (e.target.findAncestor('Transformer', true)) return
@@ -492,6 +497,7 @@ export function CanvasView() {
           {draft && <DraftShape drag={draft} px={px} />}
           <DetectOverlay pageId={page.id} px={px} />
           <SelectOverlay pageId={page.id} px={px} />
+          {tool === 'crop' && <CropOverlay px={px} />}
           {stroke && (
             <Line
               points={stroke.points.flatMap((p) => [p.x, p.y])}
@@ -522,6 +528,7 @@ export function CanvasView() {
       <SelectBar />
       <EraserBar />
       <TaskBar />
+      <CropBar />
     </div>
   )
 }
