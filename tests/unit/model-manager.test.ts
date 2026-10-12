@@ -106,7 +106,8 @@ async function settle(manager: ModelManager): Promise<ModelStatus> {
   throw new Error('download did not settle')
 }
 
-describe('ModelManager', () => {
+// Downloads wait up to 30 s to settle (settle()); on a busy machine that takes longer than the 5 s default.
+describe('ModelManager', { timeout: 40_000 }, () => {
   it('downloads, verifies and installs a pack, and remembers it across restarts', async () => {
     const { manager, updates } = await makeManager()
     expect(manager.statuses()[0]?.state).toBe('missing')
@@ -119,18 +120,14 @@ describe('ModelManager', () => {
     expect(again.manager.isInstalled('ocr')).toBe(true)
   })
 
-  it(
-    'resumes from a partial file with an HTTP Range request after a dropped connection',
-    { timeout: 40_000 },
-    async () => {
-      control.dropAfter = 100_000
-      const { manager } = await makeManager()
-      manager.download(['ocr'])
-      expect((await settle(manager)).state).toBe('installed')
-      expect(control.requests.map((r) => r.range)).toEqual([undefined, 'bytes=100000-'])
-      expect(readFileSync(join(dir, 'models/ocr/det.onnx'))).toEqual(payload)
-    }
-  )
+  it('resumes from a partial file with an HTTP Range request after a dropped connection', async () => {
+    control.dropAfter = 100_000
+    const { manager } = await makeManager()
+    manager.download(['ocr'])
+    expect((await settle(manager)).state).toBe('installed')
+    expect(control.requests.map((r) => r.range)).toEqual([undefined, 'bytes=100000-'])
+    expect(readFileSync(join(dir, 'models/ocr/det.onnx'))).toEqual(payload)
+  })
 
   it('restarts cleanly when the server ignores Range', async () => {
     control.dropAfter = 50_000
