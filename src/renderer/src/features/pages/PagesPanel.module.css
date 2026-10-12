@@ -36,3 +36,15 @@
 .number {
   font-size: 12px;
 }
+
+.item {
+  border-block: 2px solid transparent;
+}
+
+.item[data-drop='before'] {
+  border-top-color: var(--accent);
+}
+
+.item[data-drop='after'] {
+  border-bottom-color: var(--accent);
+}

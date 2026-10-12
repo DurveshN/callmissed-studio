@@ -123,3 +123,28 @@ test('makes an image searchable when exported as PDF', async () => {
   expect(page?.text).toContain('CallMissed Studio')
   expect(page?.text).toContain('SUMMER SALE')
 })
+
+test('reorders, deletes and restores pages, and exports them in the new order', async () => {
+  // The searchable-export test saved nothing, but its document is unchanged: closes without asking.
+  await window.getByRole('button', { name: 'Close document' }).click()
+  const source = join(dir, 'chapters.pdf')
+  writeFileSync(source, makePdf(['Chapter One', 'Chapter Two', 'Chapter Three']))
+  await openViaMain(app, source)
+  await expect(window.getByTestId('doc-name')).toHaveText('chapters')
+  await window.getByRole('tab', { name: /Pages/ }).click()
+  const order = async () => (await exportPdf(false)).map((p) => p.text.trim())
+
+  await window.getByRole('button', { name: 'Page 1' }).click({ button: 'right' })
+  await window.getByRole('menuitem', { name: 'Move down' }).click()
+  expect(await order()).toEqual(['Chapter Two', 'Chapter One', 'Chapter Three'])
+
+  await window.getByTestId('page-item').nth(2).dragTo(window.getByTestId('page-item').nth(0))
+  expect(await order()).toEqual(['Chapter Three', 'Chapter Two', 'Chapter One'])
+
+  await window.getByRole('button', { name: 'Page 2' }).click({ button: 'right' })
+  await window.getByRole('menuitem', { name: 'Delete page' }).click()
+  expect(await order()).toEqual(['Chapter Three', 'Chapter One'])
+
+  await window.keyboard.press('Control+z')
+  expect(await order()).toEqual(['Chapter Three', 'Chapter Two', 'Chapter One'])
+})
