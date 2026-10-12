@@ -1,7 +1,9 @@
 import { InferenceSession } from 'onnxruntime-node'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { inpaintAuto } from '../../src/ml/pipelines/inpaint/auto'
 import { inpaintLama, lamaInfer } from '../../src/ml/pipelines/inpaint/lama'
+import { createRgba } from '../../src/ml/image/raster'
 import { textMask } from '../../src/ml/pipelines/inpaint/text-mask'
 import { ensureModelPack } from '../fixtures/models'
 import { readPng } from '../fixtures/png'
@@ -39,4 +41,42 @@ describe.runIf(process.env['STUDIO_TEST_HEAVY'] === '1')('LaMa inpainting on the
     expect(worst).toBeLessThan(45)
     await session.release()
   }, 180_000)
+
+  it('fills a large removed object from its surroundings, never dark', async () => {
+    // A 1200 px object on a textured 2000×1600 picture: deeper than one tile, so it must not be tiled.
+    const root = await ensureModelPack('inpaint')
+    const session = await InferenceSession.create(join(root, 'inpaint', 'lama_fp32.onnx'), {
+      executionProviders: ['cpu'],
+      logSeverityLevel: 3
+    })
+    const W = 2000
+    const H = 1600
+    const img = createRgba(W, H)
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        img.data.set([120 + 60 * Math.sin(x / 15), 160 + 40 * Math.cos(y / 11), 90, 255], (y * W + x) * 4)
+      }
+    }
+    const mask = { width: W, height: H, data: new Uint8Array(W * H) }
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) if ((x - 1000) ** 2 + (y - 800) ** 2 < 600 ** 2) mask.data[y * W + x] = 255
+    }
+    const { image, usedLama } = await inpaintAuto(img, mask, lamaInfer(session), {
+      progress: () => undefined,
+      checkCancelled: () => undefined
+    })
+    expect(usedLama).toBe(true)
+    let dark = 0
+    let filled = 0
+    for (let y = 250; y < 1350; y += 9) {
+      for (let x = 450; x < 1550; x += 9) {
+        if (!mask.data[y * W + x]) continue
+        filled++
+        const i = (y * W + x) * 4
+        if ((image.data[i] as number) + (image.data[i + 1] as number) < 120) dark++
+      }
+    }
+    expect(dark / filled).toBeLessThan(0.002)
+    await session.release()
+  }, 300_000)
 })

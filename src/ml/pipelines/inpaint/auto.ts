@@ -66,10 +66,47 @@ export function clusterMask(mask: Gray): Box[] {
       }
     }
   }
-  return boxes.flatMap(tiles)
+  return boxes.flatMap((b) => (holeDepth(mask, b) <= MAX_CLUSTER_SIDE / 4 ? tiles(b) : [b]))
 }
 
-/** Splits a box larger than the cap (e.g. one long line) into equal tiles within it. */
+/**
+ * Largest distance (px, chamfer 1/1) from a masked pixel in `box` to the nearest unmasked one. Text
+ * strokes are shallow holes; a removed object is a deep one.
+ */
+export function holeDepth(mask: Gray, box: Box): number {
+  const w = box.x1 - box.x0
+  const h = box.y1 - box.y0
+  const far = w + h
+  const d = new Int32Array(w * h)
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (!mask.data[(box.y0 + y) * mask.width + box.x0 + x]) continue
+      // Outside the box counts as background.
+      const up = y > 0 ? (d[(y - 1) * w + x] as number) : 0
+      const left = x > 0 ? (d[y * w + x - 1] as number) : 0
+      d[y * w + x] = Math.min(far, Math.min(up, left) + 1)
+    }
+  }
+  let depth = 0
+  for (let y = h - 1; y >= 0; y--) {
+    for (let x = w - 1; x >= 0; x--) {
+      const i = y * w + x
+      if (!d[i]) continue
+      const down = y < h - 1 ? (d[i + w] as number) : 0
+      const right = x < w - 1 ? (d[i + 1] as number) : 0
+      d[i] = Math.min(d[i] as number, Math.min(down, right) + 1)
+      depth = Math.max(depth, d[i] as number)
+    }
+  }
+  return depth
+}
+
+/**
+ * Splits a box into equal tiles of at most the cap. Only for shallow holes (lines of text): every
+ * tile's context crop then still shows background. A tile inside a deep hole (a removed object) would
+ * see nothing but hole and fill it dark, so deep holes stay whole; LaMa fills them from a downscaled
+ * crop with the surroundings as context.
+ */
 function tiles(box: Box): Box[] {
   const nx = Math.ceil((box.x1 - box.x0) / MAX_CLUSTER_SIDE)
   const ny = Math.ceil((box.y1 - box.y0) / MAX_CLUSTER_SIDE)

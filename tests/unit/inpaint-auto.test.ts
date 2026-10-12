@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { clusterMask, inpaintAuto, isFlatBackground } from '../../src/ml/pipelines/inpaint/auto'
+import { clusterMask, holeDepth, inpaintAuto, isFlatBackground } from '../../src/ml/pipelines/inpaint/auto'
 import { createRgba, type Gray } from '../../src/ml/image/raster'
 
 function maskWith(width: number, height: number, rects: [number, number, number, number][]): Gray {
@@ -94,5 +94,18 @@ describe('inpaint planning', () => {
       }
       expect(widest / 512).toBeGreaterThan(0.75)
     }
+  })
+
+  it('measures how deep a hole is', () => {
+    const line = maskWith(200, 100, [[10, 40, 190, 60]])
+    expect(holeDepth(line, { x0: 0, y0: 0, x1: 200, y1: 100 })).toBe(10)
+    const block = maskWith(200, 200, [[0, 0, 200, 200]])
+    expect(holeDepth(block, { x0: 0, y0: 0, x1: 200, y1: 200 })).toBe(100)
+  })
+
+  it('keeps a large removed object whole instead of tiling it', () => {
+    const W = 1000
+    const blob = maskWith(W, W, [[100, 100, 900, 900]])
+    expect(clusterMask(blob)).toEqual([{ x0: 100, y0: 100, x1: 900, y1: 900 }])
   })
 })

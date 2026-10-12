@@ -22,7 +22,8 @@ const DML_OPTIONS: InferenceSession.SessionOptions = {
   executionMode: 'sequential'
 }
 const CPU_OPTIONS: InferenceSession.SessionOptions = { executionProviders: ['cpu'] }
-const COMMON: InferenceSession.SessionOptions = { graphOptimizationLevel: 'all', logSeverityLevel: 3 }
+// Fatal only: run-time failures are reported once by run() (with the message), not twice.
+const COMMON: InferenceSession.SessionOptions = { graphOptimizationLevel: 'all', logSeverityLevel: 4 }
 
 /**
  * Caches one ONNX Runtime session per model file. Tries DirectML first (when allowed) and falls back
