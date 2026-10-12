@@ -4,7 +4,7 @@
 
 CallMissed Studio — open-source (MIT) Windows Electron app: local OCR/segmentation/inpainting editing of images and PDFs + CallMissed image-to-image generation. Full design: `docs/superpowers/specs/2026-10-11-callmissed-studio-design.md`. Research: `.research/`.
 
-## Status (2026-10-11)
+## Status (2026-10-12)
 
 - M0 foundation done (tag `m0-foundation`).
 - Branding: app icon chosen (`resources/branding/app-icon-source.png`, option B2). Rebuild derived icons with `python tools/branding/build_icons.py`.
@@ -12,7 +12,15 @@ CallMissed Studio — open-source (MIT) Windows Electron app: local OCR/segmenta
 - Arrange (bring to front / forward / send backward / to back) via right-click menu on canvas + layer rows and Inspector "Arrange" section (`features/arrange/`). Background always stays bottom-most.
 - **M2 ML foundation done** (tag `m2-ml-foundation`): model manifest (4 packs, pinned HF commits, SHA-256), resumable downloader, ML utilityProcess with ONNX Runtime (DirectML → CPU fallback), MessagePort bridge, first-run "Set up AI features" screen, Settings dialog (models download/test/remove, GPU toggle). All 4 real packs verified to download and load on DirectML (`.research/09-model-verification.md`).
 - **M3 text done** (tag `m3-text`): Detect Text (toolbar / `D`) on the page or the selected image layer → outlined lines → click or Convert all → editable text with matched font, size, weight, color and rotation; original ink erased (LaMa if installed, else Telea); one undo step. Verified on `tests/fixtures/ocr-poster.png`: all 5 lines exact, Arial / Arial Bold identified, rotation −12°.
-- Next: M4 objects (Magic Select with SAM 2.1, cut/delete with inpaint, eraser brush, remove background, adjust, crop/rotate/resize).
+- **M4 objects done** (tag `m4-objects`):
+  - Magic Select (`W`): click / Shift+click / Alt+click / drag a box; Cut to layer, Copy to layer, Remove (Delete).
+  - Eraser brush (`B`) with Best/Fast fill.
+  - Remove background (selected image becomes transparent; on the page the subject moves to a layer over a blank page).
+  - Lift handwriting (Detect Text bar): signatures and handwriting become ink-only image layers.
+  - Adjust: brightness, contrast and saturation on image layers and pages.
+  - Crop tool (`C`) for the page or an image; page rotate 90° and resize in the Inspector.
+  - Every tool works on the page or on any image layer, including AI results.
+- Next: M5 PDF (native text layers, page ops, export with real text + embedded subset fonts, variable-font instancing).
 
 ## Pinned toolchain (compatibility-constrained)
 
@@ -55,13 +63,44 @@ CallMissed Studio — open-source (MIT) Windows Electron app: local OCR/segmenta
 - **OCR text**: every line is re-recognized as a whole after grouping (spaces from pixels); recognized spaces with no empty ink columns nearby are dropped (`dropFalseSpaces`, fixes ligature splits like "fl ags"); text is NFKC-normalized.
 - **Font choice is document-consistent** (`fonts/font-consensus.ts`): matcher returns top-8 candidates on soft ink coverage; lines grouped by color and by size measured in the best-supported reference family vote on a font; a line adopts it if within 15% of its own best score. Fixture `tests/fixtures/diagram.png`: all 32 lines Calibri Bold 26 / Calibri 22 exact.
 - ML errors carry a `code`; toasts show their message (`ui/notify.ts`).
+- **Object selection** (`ml/pipelines/segment/sam.ts`, `handlers/segment.ts`; onnx-community SAM 2.1 tiny):
+  - Input: stretch to 1024² (antialiased), ImageNet-normalise; transparent pixels are seen over white.
+  - `segment-prepare` encodes once and caches the embeddings (~17 MB) under a key; the renderer re-prepares on `NOT_PREPARED`, e.g. after a worker restart.
+  - Prompts: points are scaled into 1024 space, labels are int64. No box → an empty `[1,0,4]` box tensor (verified).
+  - Output: 3 candidates. Take the best by IoU score, upsample bilinearly from 256², threshold > 0. Keep the clicked components (or, for a box, all but specks) and fill holes under 1% of the area.
+  - CPU timing: encode 1.35 s, decode about 0.1 s.
+- **Background removal** (`pipelines/matting/birefnet.ts`):
+  - BiRefNet_lite at 1024², ImageNet-normalised; output is logits (−24..24), so apply a sigmoid.
+  - About 10 s on CPU.
+  - It releases the SAM and LaMa sessions first: with SAM loaded, it ran out of memory.
+- **Raster editing** (`features/raster/`):
+  - `raster-edit.ts`: `writeRaster` writes edits back (page → one patch per region; layer → a new image for that layer, applied inside the caller's commit). Also `cutoutLayer` (placed exactly over its source via `snap.toPage`), `eraseMask` (inpaint with a context crop; only the grown mask plus 6 px is written back) and `suggestQualityEraser`.
+  - `mask.ts`: grow, brush stroke, feather and cut-out helpers (pure).
+  - Snapshots map both ways (`toPage` / `fromPage`).
+  - `targetAt` picks the topmost image under a point (Magic Select and Eraser); Detect Text and Remove background use the selection instead.
+- **Tool plumbing**:
+  - Pixel tools (`magic`, `erase`, `crop`) hide the transform handles.
+  - Choosing one ends Detect Text; starting Detect Text switches to Select.
+  - Selections are cleared when the picture changes (`rasterVersion`) and cannot be cleared mid-apply.
+  - Bars use `ui/FloatingBar`. One-shot jobs use `features/tasks/task.ts` (`runTask`, cancellable).
+  - `features/models/ensure-model.ts` offers missing model downloads for every tool.
+- **Adjustments**:
+  - Optional `adjustments` on `ImageLayer` and `Page` (−1..1 each; old projects load unchanged).
+  - Rendered by a Konva custom filter on a node cached at native resolution (`adjust/use-adjustments.ts`). Patches report their load so the page cache refreshes.
+  - Tools always read unadjusted pixels; derived layers (cut-outs, lifts, remove-bg subject) inherit their source's adjustments.
+- **Page geometry** (`features/page-geometry/`):
+  - Operations bake the page picture (background + patches) into a new PNG background, clear the patches and map the layers (`transform.ts`, pure).
+  - They run one at a time (queue) and plan against the page as it is when they start.
+  - PDF pages become image-backed once cropped, rotated or resized.
+  - Image-layer crop keeps the source resolution.
+- e2e helpers delete their temp profiles on exit: each profile holds model copies, and 12 GB of leftovers once filled the disk.
 - GPU mode changes are acknowledged by the worker (`configure` + `ack`), `settings:update` awaits it, and `runJob` awaits any in-flight settings save.
 - Packaging: `electron-builder.yml` unpacks `onnxruntime-node` from asar and drops non-win-x64 binaries (verify in M7).
 
 ## Testing
 
-- `npm test` — Vitest unit (97 tests incl. opt-in LaMa test via `STUDIO_TEST_LAMA=1`; real OCR models are downloaded once into `.cache/models`, SHA-256 verified): IPC contracts, CSP, protocol path guard, project zip, library DB, project service, document store, snapping, arrange, model manager (local HTTP server: resume, bad checksum, 404, cancel, version bump), session pool fallback, job queue, manifest pinning/licences, ONNX fixture.
-- `npm run test:e2e` — builds then Playwright drives Electron (27 tests, incl. Detect Text with real OCR models seeded via `seedModels`). Helpers in `tests/e2e/helpers.ts`: isolated profile via `STUDIO_USER_DATA`, `launchApp({ modelSetupDone })` seeds settings, dialog stubs, generated PNG/PDF fixtures, `closeApp()` force-exits (native unsaved-changes modal would hang the run). `tests/fixtures/onnx.ts` hand-encodes a tiny Identity ONNX model so model tests never hit the network.
+- `npm test` — Vitest unit (119 tests incl. opt-in real LaMa / SAM 2.1 / BiRefNet tests via `STUDIO_TEST_HEAVY=1`; real OCR models are downloaded once into `.cache/models`, SHA-256 verified): IPC contracts, CSP, protocol path guard, project zip, library DB, project service, document store, snapping, arrange, model manager (local HTTP server: resume, bad checksum, 404, cancel, version bump), session pool fallback, job queue, manifest pinning/licences, ONNX fixture.
+- `npm run test:e2e` — builds then Playwright drives Electron (37 tests: objects.spec covers Magic Select / Eraser / Remove background / Lift handwriting / Adjust, geometry.spec covers rotate / resize / crop, incl. Detect Text with real OCR models seeded via `seedModels`). Helpers in `tests/e2e/helpers.ts`: isolated profile via `STUDIO_USER_DATA`, `launchApp({ modelSetupDone })` seeds settings, dialog stubs, generated PNG/PDF fixtures, `closeApp()` force-exits (native unsaved-changes modal would hang the run). `tests/fixtures/onnx.ts` hand-encodes a tiny Identity ONNX model so model tests never hit the network.
 
 ## Decisions log
 

@@ -122,10 +122,11 @@ Layer =
 | Add Text | New TextLayer |
 | Magic Select | Click points / box → SAM mask → Cut to layer (hole inpainted) / Delete (inpaint) / Copy |
 | Erase | Brush mask → inpaint; Quality (LaMa) / Fast (Telea) toggle |
-| Remove Background | BiRefNet_lite matte → subject on new ImageLayer |
+| Remove Background | BiRefNet_lite matte. Image layer: becomes transparent around its subject. Page: subject moves to a new ImageLayer, the page behind becomes blank (adjustments move with the subject) |
 | Insert Image, Shapes | Add ImageLayer / ShapeLayer |
-| Crop / Rotate / Resize canvas | Page geometry ops |
-| Adjust | Brightness / contrast / saturation on layer or page |
+| Crop / Rotate / Resize canvas | Crop tool for the page or an image layer; page rotate 90° and resize (aspect kept). Page ops bake background + patches into a new background image and move/turn/scale layers with it (PDF pages become image-backed) |
+| Adjust | Brightness / contrast / saturation on an image layer or the page picture; non-destructive (optional `adjustments`), inherited by cut-outs |
+| Lift handwriting | Detect Text: lines classified as handwriting/signatures become ink-only image layers over their original (erased); clicking one converts it to text instead |
 
 ### 4.2 PDF
 
