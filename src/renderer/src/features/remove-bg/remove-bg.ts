@@ -53,8 +53,14 @@ export function removeBackground(): Promise<void> {
     const blank = await writeRaster(docId, snap, new Uint8ClampedArray(width * height * 4).fill(255), all)
     useDocumentStore.getState().commit('Remove background', (d) => {
       const at = blank(d)
+      const page = d.pages.find((p) => p.id === target.pageId)
       d.assets[subject.assetId] = { mime: 'image/png' }
-      d.pages.find((p) => p.id === target.pageId)?.layers.splice(at, 0, subject)
+      // The picture's adjustments move with it to the subject; the blank page needs none.
+      if (page?.adjustments) {
+        subject.adjustments = { ...page.adjustments }
+        delete page.adjustments
+      }
+      page?.layers.splice(at, 0, subject)
     })
     useDocumentStore.getState().select([subject.id])
   })

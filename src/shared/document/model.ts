@@ -15,6 +15,13 @@ const Box = {
   rotation: z.number()
 }
 
+/** Non-destructive color adjustments, each −1..1 (0 = unchanged). */
+export const Adjustments = z.object({
+  brightness: z.number().min(-1).max(1),
+  contrast: z.number().min(-1).max(1),
+  saturation: z.number().min(-1).max(1)
+})
+
 const LayerBase = {
   id: Id,
   name: z.string().max(200),
@@ -42,7 +49,8 @@ export const ImageLayer = z.object({
   ...LayerBase,
   type: z.literal('image'),
   assetId: Id,
-  origin: z.enum(['cutout', 'import', 'ai'])
+  origin: z.enum(['cutout', 'import', 'ai']),
+  adjustments: Adjustments.optional()
 })
 
 export const ShapeLayer = z.object({
@@ -77,6 +85,8 @@ export const Page = z.object({
   height: z.number().positive(),
   background: PageBackground,
   patches: z.array(Patch),
+  /** Applied to the page picture (background and patches), not to layers. */
+  adjustments: Adjustments.optional(),
   /** Bottom-most first. */
   layers: z.array(Layer)
 })
@@ -99,6 +109,7 @@ export const StudioDocument = z.object({
 })
 
 export type Color = z.infer<typeof Color>
+export type Adjustments = z.infer<typeof Adjustments>
 export type TextLayer = z.infer<typeof TextLayer>
 export type ImageLayer = z.infer<typeof ImageLayer>
 export type ShapeLayer = z.infer<typeof ShapeLayer>

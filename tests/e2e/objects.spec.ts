@@ -217,3 +217,17 @@ test('lifts handwriting to an image layer holding just the ink', async () => {
   expect(opaque).toBeGreaterThan(0.03)
   expect(opaque).toBeLessThan(0.5)
 })
+
+test('adjusts the page picture non-destructively, exported and undone in one step', async () => {
+  await window.keyboard.press('Escape')
+  await window.keyboard.press('Escape')
+  const brightness = window.getByTestId('adjust-section').getByLabel('Brightness')
+  await brightness.fill('-50')
+  await brightness.fill('-40')
+  // Blank paper (no layer there) at the bottom-right of the 600×200 note.
+  const corner = (png: ReturnType<typeof readPng>) => png.data[(190 * png.width + 590) * 4] as number
+  expect(Math.abs(corner(await exported()) - (255 - 0.4 * 255))).toBeLessThanOrEqual(2)
+  await expect(window.getByRole('button', { name: /^Undo Adjust/ })).toBeVisible()
+  await window.keyboard.press('Control+z')
+  expect(corner(await exported())).toBe(255)
+})

@@ -1,5 +1,6 @@
 import type { ImageLayer, StudioDocument } from '@shared/document/model'
 import { notify } from '../../ui/notify'
+import { adjustmentsOf } from '../adjust/adjust-ops'
 import { selectActivePage, useDocumentStore } from '../document/store'
 import { MlError, runJob } from '../ml/ml-client'
 import { ensureModel } from '../models/ensure-model'
@@ -213,6 +214,9 @@ export function applySelection(action: ObjectAction): void {
     useDocumentStore.getState().commit(LABELS[action], (d) => {
       const at = write ? write(d) : indexAbove(d, target)
       if (!layer) return
+      // The cut-out looks exactly like the picture it came from.
+      const adjustments = adjustmentsOf(d, target)
+      if (adjustments) layer.adjustments = { ...adjustments }
       d.assets[layer.assetId] = { mime: 'image/png' }
       d.pages.find((p) => p.id === target.pageId)?.layers.splice(at, 0, layer)
     })

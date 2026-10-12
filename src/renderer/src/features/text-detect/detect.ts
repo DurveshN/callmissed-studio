@@ -12,6 +12,7 @@ import { ensureModel } from '../models/ensure-model'
 import { selectActivePage, useDocumentStore } from '../document/store'
 import { suggestQualityEraser, writeRaster } from '../raster/raster-edit'
 import { cropPixels, currentTarget, snapshot, type RasterSnapshot } from '../raster/raster-target'
+import { adjustmentsOf } from '../adjust/adjust-ops'
 import { useToolStore } from '../tools/tool-store'
 import { looksHandwritten } from './classify'
 import { liftedLayers } from './lift'
@@ -280,8 +281,12 @@ async function replaceLines(
     const target = snap.target
     useDocumentStore.getState().commit(label(lines.length), (d: Draft<StudioDocument>) => {
       const insertAt = write(d)
+      const adjustments = adjustmentsOf(d, target)
       for (const layer of layers) {
-        if (layer.type === 'image') d.assets[layer.assetId] = { mime: 'image/png' }
+        if (layer.type !== 'image') continue
+        d.assets[layer.assetId] = { mime: 'image/png' }
+        // Lifted ink looks exactly like the picture it came from.
+        if (adjustments) layer.adjustments = { ...adjustments }
       }
       // What was part of the picture sits directly above it, below anything the user added on top.
       d.pages.find((p) => p.id === target.pageId)?.layers.splice(insertAt, 0, ...layers)

@@ -1,6 +1,8 @@
 import type Konva from 'konva'
+import { useRef } from 'react'
 import { Ellipse, Group, Image as KonvaImage, Line, Rect, Text } from 'react-konva'
 import type { ImageLayer, Layer, ShapeLayer, TextLayer } from '@shared/document/model'
+import { useAdjustments } from '../adjust/use-adjustments'
 import { useAssetImage } from '../assets/asset-cache'
 import { fontStyle } from './text-metrics'
 
@@ -67,8 +69,12 @@ function ShapeContent({ layer }: { layer: ShapeLayer }) {
 
 function ImageContent({ layer, docId }: { layer: ImageLayer; docId: string }) {
   const image = useAssetImage(docId, layer.assetId)
+  const ref = useRef<Konva.Image>(null)
+  // Cached at the image's own resolution, however small the layer is drawn.
+  const pixelRatio = image ? image.naturalWidth / Math.max(1, layer.width) : 1
+  useAdjustments(ref, layer.adjustments, pixelRatio, [image, layer.width, layer.height])
   return image ? (
-    <KonvaImage image={image} width={layer.width} height={layer.height} />
+    <KonvaImage ref={ref} image={image} width={layer.width} height={layer.height} />
   ) : (
     <Rect width={layer.width} height={layer.height} fill="#e4e4e7" />
   )

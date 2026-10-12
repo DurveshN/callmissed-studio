@@ -8,6 +8,7 @@ import { ALL_FONTS, availableWeights, fontByFamily } from '../fonts/catalog'
 import { selectActivePage, selectSelectedLayers, useDocumentStore } from '../document/store'
 import { ColorField, Field, NumberField } from '../../ui/fields'
 import ui from '../../ui/ui.module.css'
+import { AdjustSection } from './AdjustSection'
 import styles from './InspectorPanel.module.css'
 
 const WEIGHTS = [
@@ -286,8 +287,15 @@ function ArrangeSection({ ids }: { ids: string[] }) {
   )
 }
 
+function PageAdjustSection() {
+  const page = useDocumentStore(selectActivePage)
+  if (!page) return null
+  return <AdjustSection target={{ kind: 'page', pageId: page.id }} adjustments={page.adjustments} />
+}
+
 export function InspectorPanel() {
   const selected = useDocumentStore(useShallow(selectSelectedLayers))
+  const pageId = useDocumentStore((s) => selectActivePage(s)?.id ?? '')
   const layer = selected.length === 1 ? selected[0] : undefined
 
   if (selected.length > 1) {
@@ -307,10 +315,17 @@ export function InspectorPanel() {
   return (
     <div className={styles.panel} data-testid="inspector">
       {!layer && <DocumentSection />}
+      {!layer && <PageAdjustSection />}
       {layer && <GeometrySection layer={layer} />}
       {layer && <ArrangeSection ids={[layer.id]} />}
       {layer?.type === 'text' && <TextSection layer={layer} />}
       {layer?.type === 'shape' && <ShapeSection layer={layer} />}
+      {layer?.type === 'image' && (
+        <AdjustSection
+          target={{ kind: 'layer', pageId, layerId: layer.id }}
+          adjustments={layer.adjustments}
+        />
+      )}
     </div>
   )
 }
