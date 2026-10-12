@@ -1,7 +1,7 @@
 import { ScanText } from 'lucide-react'
 import ui from '../../ui/ui.module.css'
 import { FloatingBar } from '../../ui/FloatingBar'
-import { cancelDetect, convertLines } from './detect'
+import { cancelDetect, convertLines, liftLines } from './detect'
 import { useDetectStore } from './detect-store'
 
 /** Floating status bar over the canvas while Detect Text is active. */
@@ -22,7 +22,7 @@ export function DetectBar() {
   else {
     const found = `${lines.length} text ${lines.length === 1 ? 'line' : 'lines'} found ${where}`
     text = handwritten.length
-      ? `${found} · ${handwritten.length} handwritten kept as image (click to convert anyway)`
+      ? `${found} · ${handwritten.length} handwritten`
       : `${found} — click one to edit it`
   }
 
@@ -37,6 +37,15 @@ export function DetectBar() {
       onClose={cancelDetect}
       closeLabel="Close text detection"
     >
+      {status === 'ready' && handwritten.length > 0 && (
+        <button
+          className={ui.button}
+          title="Move signatures and handwriting to image layers you can move and resize (click one to make it text instead)"
+          onClick={() => void liftLines(handwritten.map((l) => l.id))}
+        >
+          Lift handwriting
+        </button>
+      )}
       {status === 'ready' && printed.length > 0 && (
         <button className={ui.primaryButton} onClick={() => void convertLines(printed.map((l) => l.id))}>
           Convert all

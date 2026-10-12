@@ -28,7 +28,7 @@ let window: Page
 test.beforeAll(async () => {
   test.setTimeout(600_000)
   const userData = tempDir('objects-profile')
-  await seedModels(userData, ['segment', 'inpaint', 'remove-bg'])
+  await seedModels(userData, ['ocr', 'segment', 'inpaint', 'remove-bg'])
   ;({ app, window } = await launchApp({ userData }))
   await openViaMain(app, picture)
   await expect(window.getByTestId('doc-name')).toHaveText('shapes')
@@ -47,17 +47,29 @@ async function onPage(x: number, y: number) {
   return { x: box.x + box.width / 2 + x - W / 2, y: box.y + box.height / 2 + y - H / 2 }
 }
 
-async function saved(): Promise<{
+interface SavedDoc {
   pages: {
     patches: unknown[]
-    layers: { name: string; x: number; y: number; width: number; height: number }[]
+    layers: { name: string; x: number; y: number; width: number; height: number; assetId?: string }[]
   }[]
-}> {
+}
+
+/** Saves a copy of the project and returns its document, plus a reader for its image assets. */
+async function saved(): Promise<SavedDoc & { asset(id: string): ReturnType<typeof readPng> }> {
   const out = join(dir, `doc-${Date.now()}.cmsp`)
   await stubSaveDialog(app, out)
   await window.keyboard.press('Control+Shift+s')
   await expect.poll(() => readFileSafe(out)).not.toBeNull()
-  return JSON.parse(strFromU8(unzipSync(readFileSync(out))['document.json'] as Uint8Array))
+  const files = unzipSync(readFileSync(out))
+  const doc = JSON.parse(strFromU8(files['document.json'] as Uint8Array)) as SavedDoc
+  return {
+    ...doc,
+    asset: (id) => {
+      const path = join(dir, `${id}.png`)
+      writeFileSync(path, files[`assets/${id}.png`] as Uint8Array)
+      return readPng(path)
+    }
+  }
 }
 
 function readFileSafe(path: string): Buffer | null {
@@ -159,4 +171,49 @@ test('removes the background of the page into a subject layer', async () => {
   expect(px(120, 150)[1]).toBeLessThan(80) // red disc
   expect(px(310, 150)[2]).toBeGreaterThan(180) // blue square
   for (const v of px(20, 20)) expect(v).toBeGreaterThan(245) // white
+})
+
+test('lifts handwriting to an image layer holding just the ink', async () => {
+  // A handwritten-looking line (bundled Caveat font) rendered by the app itself: no personal data.
+  const png = await window.evaluate(async () => {
+    await document.fonts.load('64px Caveat')
+    const canvas = document.createElement('canvas')
+    canvas.width = 600
+    canvas.height = 200
+    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, 600, 200)
+    ctx.fillStyle = '#1b2a6b'
+    ctx.font = '64px Caveat'
+    ctx.fillText('Kind regards, Alex', 60, 120)
+    return canvas.toDataURL('image/png').split(',')[1] as string
+  })
+  const note = join(dir, 'note.png')
+  writeFileSync(note, Buffer.from(png, 'base64'))
+  // The previous test saved the document, so it closes without asking.
+  await window.getByRole('button', { name: 'Close document' }).click()
+  await openViaMain(app, note)
+  await expect(window.getByTestId('doc-name')).toHaveText('note')
+
+  await window.keyboard.press('d')
+  const detect = window.getByTestId('detect-bar')
+  await expect(detect.getByRole('button', { name: 'Lift handwriting' })).toBeVisible({ timeout: 90_000 })
+  await detect.getByRole('button', { name: 'Lift handwriting' }).click()
+  await expect(detect).toBeHidden({ timeout: 90_000 })
+
+  const doc = await saved()
+  const layers = doc.pages[0]?.layers ?? []
+  expect(layers.map((l) => l.name)).toEqual(['Handwriting'])
+  // The layer covers the writing (x 60.., baseline 120).
+  expect(layers[0]?.x).toBeLessThan(70)
+  expect((layers[0]?.x ?? 0) + (layers[0]?.width ?? 0)).toBeGreaterThan(450)
+  expect(doc.pages[0]?.patches.length).toBeGreaterThan(0)
+
+  // Just the ink: transparent around the letters, opaque on the strokes.
+  const ink = doc.asset(layers[0]?.assetId ?? '')
+  const alpha = Array.from({ length: ink.width * ink.height }, (_, i) => ink.data[i * 4 + 3] as number)
+  expect(alpha[0]).toBe(0)
+  const opaque = alpha.filter((a) => a > 200).length / alpha.length
+  expect(opaque).toBeGreaterThan(0.03)
+  expect(opaque).toBeLessThan(0.5)
 })

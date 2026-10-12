@@ -14,6 +14,7 @@ import { suggestQualityEraser, writeRaster } from '../raster/raster-edit'
 import { cropPixels, currentTarget, snapshot, type RasterSnapshot } from '../raster/raster-target'
 import { useToolStore } from '../tools/tool-store'
 import { looksHandwritten } from './classify'
+import { liftedLayers } from './lift'
 import { getSnapshot, resetDetect, setSnapshot, useDetectStore, type DetectedLine } from './detect-store'
 
 let abort: AbortController | null = null
@@ -225,10 +226,15 @@ function textLayerFor(line: DetectedLine, snap: RasterSnapshot, match: FontCandi
 }
 
 /**
- * Replaces the given detected lines with editable text: erases the original pixels (one patch per
- * group of nearby lines, or a new layer image) and adds matching text layers — all in one undo step.
+ * Replaces the given detected lines: erases the original pixels (one patch per group of nearby lines,
+ * or a new layer image) and adds the layers `make` builds for them, all in one undo step.
  */
-export async function convertLines(ids: string[]): Promise<void> {
+async function replaceLines(
+  ids: string[],
+  label: (count: number) => string,
+  make: (lines: DetectedLine[], snap: RasterSnapshot, docId: string) => Promise<Layer[]>,
+  failure: string
+): Promise<void> {
   const snap = getSnapshot()
   const { docId, doc } = useDocumentStore.getState()
   const detect = useDetectStore.getState()
@@ -237,6 +243,8 @@ export async function convertLines(ids: string[]): Promise<void> {
   useDetectStore.setState({ status: 'converting', progress: 0 })
 
   try {
+    // Built from the untouched snapshot, before anything is erased.
+    const layers = await make(lines, snap, docId)
     const { image } = snap
     const regions = lineRegions(lines, image.width, image.height)
     const filled = new Uint8ClampedArray(image.data)
@@ -255,8 +263,8 @@ export async function convertLines(ids: string[]): Promise<void> {
           }),
           quality: 'auto'
         },
-        // Erasing is the slow part: keep the bar moving within each region (0–70% overall).
-        { onProgress: (p) => useDetectStore.setState({ progress: ((n + p) / regions.length) * 0.7 }) }
+        // Erasing is the slow part: keep the bar moving within each region (0-90% overall).
+        { onProgress: (p) => useDetectStore.setState({ progress: ((n + p) / regions.length) * 0.9 }) }
       )
       if (result.method === 'telea') methodUsed = 'telea'
       for (let row = 0; row < region.height; row++) {
@@ -265,26 +273,20 @@ export async function convertLines(ids: string[]): Promise<void> {
           ((region.y + row) * image.width + region.x) * 4
         )
       }
-      useDetectStore.setState({ progress: ((n + 1) / regions.length) * 0.7 })
+      useDetectStore.setState({ progress: ((n + 1) / regions.length) * 0.9 })
     }
-
-    const textLayers: TextLayer[] = []
-    const fonts = await fontsFor(lines, snap)
-    for (const line of lines) textLayers.push(textLayerFor(line, snap, fonts.get(line.id) ?? null))
     const write = await writeRaster(docId, snap, filled, regions)
 
     const target = snap.target
-    useDocumentStore
-      .getState()
-      .commit(
-        lines.length > 1 ? `Convert ${lines.length} text lines` : 'Convert text',
-        (d: Draft<StudioDocument>) => {
-          const insertAt = write(d)
-          // Text that was part of the picture sits directly above it, below anything the user added on top.
-          d.pages.find((p) => p.id === target.pageId)?.layers.splice(insertAt, 0, ...(textLayers as Layer[]))
-        }
-      )
-    useDocumentStore.getState().select(textLayers.map((l) => l.id))
+    useDocumentStore.getState().commit(label(lines.length), (d: Draft<StudioDocument>) => {
+      const insertAt = write(d)
+      for (const layer of layers) {
+        if (layer.type === 'image') d.assets[layer.assetId] = { mime: 'image/png' }
+      }
+      // What was part of the picture sits directly above it, below anything the user added on top.
+      d.pages.find((p) => p.id === target.pageId)?.layers.splice(insertAt, 0, ...layers)
+    })
+    useDocumentStore.getState().select(layers.map((l) => l.id))
 
     const remaining = detect.lines.filter((l) => !ids.includes(l.id))
     if (remaining.length === 0) {
@@ -299,8 +301,31 @@ export async function convertLines(ids: string[]): Promise<void> {
     if (methodUsed === 'telea') suggestQualityEraser()
   } catch (error) {
     useDetectStore.setState({ status: 'ready', progress: 0 })
-    notify.error(error, 'Could not convert the text')
+    notify.error(error, failure)
   }
+}
+
+/** Replaces detected lines with editable text in the matched font. */
+export function convertLines(ids: string[]): Promise<void> {
+  return replaceLines(
+    ids,
+    (n) => (n > 1 ? `Convert ${n} text lines` : 'Convert text'),
+    async (lines, snap) => {
+      const fonts = await fontsFor(lines, snap)
+      return lines.map((line) => textLayerFor(line, snap, fonts.get(line.id) ?? null))
+    },
+    'Could not convert the text'
+  )
+}
+
+/** Moves detected lines (signatures, handwriting) to image layers holding just their ink. */
+export function liftLines(ids: string[]): Promise<void> {
+  return replaceLines(
+    ids,
+    (n) => (n > 1 ? `Lift ${n} handwriting items` : 'Lift handwriting'),
+    (lines, snap, docId) => liftedLayers(docId, snap, lines),
+    'Could not lift the handwriting'
+  )
 }
 
 // Pixel tools act on the picture; detected lines would intercept their clicks.
