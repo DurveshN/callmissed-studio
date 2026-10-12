@@ -82,3 +82,25 @@ describe('page geometry', () => {
     expect(box.y).toBeCloseTo(25)
   })
 })
+
+describe('changing the page frame', () => {
+  it('keeps a layer where it was when another layer becomes the page', async () => {
+    const { reframeLayer } = await import('../../src/renderer/src/features/page-geometry/transform')
+    // The new page: a layer at (100, 50), turned 30°, shown at half its pixel size.
+    const frame = { x: 100, y: 50, rotation: 30, scale: 0.5 }
+    const moved = reframeLayer({ ...image, rotation: 45 }, frame)
+    // Mapping the reframed layer back through the frame gives the original corners.
+    const r = (frame.rotation * Math.PI) / 180
+    const back = (p: number[]) => [
+      +(frame.x + frame.scale * ((p[0] as number) * Math.cos(r) - (p[1] as number) * Math.sin(r))).toFixed(6),
+      +(frame.y + frame.scale * ((p[0] as number) * Math.sin(r) + (p[1] as number) * Math.cos(r))).toFixed(6)
+    ]
+    const expected = corners({ ...image, rotation: 45 }).flat()
+    corners(moved)
+      .map(back)
+      .flat()
+      .forEach((v, i) => expect(v).toBeCloseTo(expected[i] as number, 5))
+    expect(moved.rotation).toBe(15)
+    expect(moved.width).toBe(60)
+  })
+})

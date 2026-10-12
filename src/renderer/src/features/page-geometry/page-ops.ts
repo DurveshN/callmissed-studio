@@ -28,7 +28,7 @@ async function pngAsset(docId: string, ctx: OffscreenCanvasRenderingContext2D): 
 /** Page operations run one at a time, each on the document as the previous one left it. */
 let queue: Promise<void> = Promise.resolve()
 
-function enqueue(work: () => Promise<void>): Promise<void> {
+export function enqueue(work: () => Promise<void>): Promise<void> {
   const run = queue.then(work)
   queue = run.catch(() => undefined)
   return run

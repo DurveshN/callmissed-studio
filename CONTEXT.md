@@ -93,6 +93,16 @@ CallMissed Studio — open-source (MIT) Windows Electron app: local OCR/segmenta
   - They run one at a time (queue) and plan against the page as it is when they start.
   - PDF pages become image-backed once cropped, rotated or resized.
   - Image-layer crop keeps the source resolution.
+- **Transparency** (`pipelines/inpaint/transparent.ts`, used by every inpaint job on images with alpha):
+  - Transparent pixels usually store black. Their colours are bled from the nearest visible pixel before the fill.
+  - The hole's opacity is filled separately (Telea on the alpha plane), so a hole beside a transparent area stays transparent.
+  - Fully transparent pixels outside the hole are left untouched.
+- **Background choice** (`page-geometry/background.ts`):
+  - **Set as background** (layer menu / Image section): the image becomes the page at its own size. Every other layer, and the previous page picture (now a layer called "Previous background"), is re-expressed in the image's frame (`reframeLayer`), so nothing moves on screen.
+  - **Make background a layer** (Page section): the page picture becomes a layer over a blank white page.
+  - Both share the page-operation queue.
+  - The canvas re-fits whenever the page size changes, including on undo.
+- **Memory**: CPU sessions run without ONNX Runtime's memory arena. The arena keeps peak-sized buffers (800+ MB for BiRefNet), and background removal failed with it on a busy 16 GB machine.
 - e2e helpers delete their temp profiles on exit: each profile holds model copies, and 12 GB of leftovers once filled the disk.
 - GPU mode changes are acknowledged by the worker (`configure` + `ack`), `settings:update` awaits it, and `runJob` awaits any in-flight settings save.
 - Packaging: `electron-builder.yml` unpacks `onnxruntime-node` from asar and drops non-win-x64 binaries (verify in M7).

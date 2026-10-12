@@ -1,5 +1,15 @@
 import { useShallow } from 'zustand/react/shallow'
-import { AlignCenter, AlignLeft, AlignRight, Crop, Italic, RotateCcw, RotateCw } from 'lucide-react'
+import {
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
+  Crop,
+  ImageUp,
+  Italic,
+  RotateCcw,
+  RotateCw,
+  Wallpaper
+} from 'lucide-react'
 import type { Layer, ShapeLayer, TextLayer } from '@shared/document/model'
 import { deleteLayers, renameDocument, updateLayer } from '../document/layer-ops'
 import { ARRANGE_ACTIONS, arrange, canArrange } from '../arrange/arrange'
@@ -10,6 +20,7 @@ import { ColorField, Field, NumberField } from '../../ui/fields'
 import ui from '../../ui/ui.module.css'
 import { MAX_PAGE_SIDE, MIN_PAGE_SIDE, resizePage, rotatePage } from '../page-geometry/page-ops'
 import { useToolStore } from '../tools/tool-store'
+import { detachBackground, setAsBackground } from '../page-geometry/background'
 import { AdjustSection } from './AdjustSection'
 import styles from './InspectorPanel.module.css'
 
@@ -317,6 +328,15 @@ function PageSection() {
           <Crop size={14} /> Crop page
         </button>
       </div>
+      <div className={styles.row}>
+        <button
+          className={ui.button}
+          title="Move the page picture to a layer you can move and resize, over a blank page"
+          onClick={() => void detachBackground()}
+        >
+          <ImageUp size={14} /> Make background a layer
+        </button>
+      </div>
       <div className={styles.grid}>
         <NumberField
           label="Width"
@@ -379,6 +399,13 @@ export function InspectorPanel() {
           <div className={styles.row}>
             <button className={ui.button} onClick={() => useToolStore.getState().setTool('crop')}>
               <Crop size={14} /> Crop image
+            </button>
+            <button
+              className={ui.button}
+              title="Make this image the page; the current background becomes a layer"
+              onClick={() => void setAsBackground(layer.id)}
+            >
+              <Wallpaper size={14} /> Set as background
             </button>
           </div>
         </section>

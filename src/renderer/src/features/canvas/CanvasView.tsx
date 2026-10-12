@@ -109,13 +109,15 @@ export function CanvasView() {
     return () => observer.disconnect()
   }, [])
 
-  // Fit when a page is shown for the first time or the canvas first gets a size.
+  // Fit when a page is shown, the canvas first gets a size, or the page changes size (crop, rotate,
+  // resize, a new background — and undoing them).
   const sized = viewport.width > 0 && viewport.height > 0
   const pageId = page?.id
+  const pageWidth = page?.width
+  const pageHeight = page?.height
   useEffect(() => {
-    const p = selectActivePage(useDocumentStore.getState())
-    if (sized && p) useViewportStore.getState().fit(p.width, p.height)
-  }, [pageId, sized])
+    if (sized && pageWidth && pageHeight) useViewportStore.getState().fit(pageWidth, pageHeight)
+  }, [pageId, sized, pageWidth, pageHeight])
 
   useEffect(() => {
     registerPageGroup(groupRef.current)

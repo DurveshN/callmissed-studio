@@ -1,9 +1,10 @@
-import { Copy, Eye, EyeOff, Lock, Trash2, Unlock } from 'lucide-react'
+import { Copy, Eye, EyeOff, Lock, Trash2, Unlock, Wallpaper } from 'lucide-react'
 import { openContextMenu, type MenuItem } from '../../ui/context-menu'
 import { deleteLayers, duplicateLayers, updateLayers } from '../document/layer-ops'
 import { selectActivePage, useDocumentStore } from '../document/store'
 import { ARRANGE_ACTIONS, arrange, canArrange } from './arrange'
 import { ArrangeIcon } from './ArrangeIcon'
+import { setAsBackground } from '../page-geometry/background'
 
 /** Selects `layerId` (unless already part of the selection) and opens the layer context menu there. */
 export function openLayerMenu(x: number, y: number, layerId: string): void {
@@ -24,6 +25,16 @@ export function openLayerMenu(x: number, y: number, layerId: string): void {
       onSelect: () => arrange(ids, action)
     })),
     'separator',
+    ...(selected.length === 1 && selected[0]?.type === 'image'
+      ? [
+          {
+            label: 'Set as background',
+            icon: <Wallpaper size={16} />,
+            onSelect: () => void setAsBackground(layerId)
+          },
+          'separator' as const
+        ]
+      : []),
     {
       label: 'Duplicate',
       shortcut: 'Ctrl+D',

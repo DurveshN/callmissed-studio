@@ -4,6 +4,8 @@ import { inpaintAuto } from '../pipelines/inpaint/auto'
 import { lamaInfer, type LamaInfer } from '../pipelines/inpaint/lama'
 import { inpaintTelea } from '../pipelines/inpaint/telea'
 import { textMask } from '../pipelines/inpaint/text-mask'
+import { hasTransparency, inpaintTransparent } from '../pipelines/inpaint/transparent'
+import type { Gray, Rgba } from '../image/raster'
 import type { HandlerContext } from './context'
 
 const LAMA_FILE = 'lama_fp32.onnx'
@@ -30,10 +32,17 @@ export async function inpaint(
   ctx.progress(0.05)
   throwIfCancelled(ctx.signal)
 
-  if (input.quality === 'fast') return { pixels: inpaintTelea(img, mask.data).data, method: 'telea' }
-  const { image, usedLama } = await inpaintAuto(img, mask, lamaRunner(ctx), {
-    progress: (p) => ctx.progress(0.05 + 0.95 * p),
-    checkCancelled: () => throwIfCancelled(ctx.signal)
-  })
-  return { pixels: image.data, method: usedLama ? 'lama' : 'telea' }
+  const fill = async (image: Rgba, holes: Gray): Promise<{ image: Rgba; method: 'lama' | 'telea' }> => {
+    if (input.quality === 'fast') return { image: inpaintTelea(image, holes.data), method: 'telea' }
+    const result = await inpaintAuto(image, holes, lamaRunner(ctx), {
+      progress: (p) => ctx.progress(0.05 + 0.9 * p),
+      checkCancelled: () => throwIfCancelled(ctx.signal)
+    })
+    return { image: result.image, method: result.usedLama ? 'lama' : 'telea' }
+  }
+  // Transparent pixels usually store black: fill colour and opacity separately (images with alpha).
+  const { image, method } = hasTransparency(img)
+    ? await inpaintTransparent(img, mask, fill)
+    : await fill(img, mask)
+  return { pixels: image.data, method }
 }

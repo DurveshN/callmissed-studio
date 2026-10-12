@@ -70,3 +70,31 @@ export function croppedLayerBox(layer: Layer, crop: Box): Box {
     height: crop.height
   }
 }
+
+/** Where a new page frame sits in the old page: its origin, rotation and page units per new unit. */
+export interface Frame {
+  x: number
+  y: number
+  rotation: number
+  scale: number
+}
+
+/** An angle in (−180°, 180°]. */
+const normalizeAngle = (a: number) => {
+  const r = ((((a + 180) % 360) + 360) % 360) - 180
+  return r === -180 ? 180 : r
+}
+
+/** The layer expressed in `frame`'s coordinates, so it looks the same once that frame is the page. */
+export function reframeLayer<L extends Layer>(layer: L, frame: Frame): L {
+  const rad = (frame.rotation * Math.PI) / 180
+  const dx = layer.x - frame.x
+  const dy = layer.y - frame.y
+  const turned = {
+    ...layer,
+    x: dx * Math.cos(rad) + dy * Math.sin(rad),
+    y: -dx * Math.sin(rad) + dy * Math.cos(rad),
+    rotation: normalizeAngle(layer.rotation - frame.rotation)
+  }
+  return scaleLayer(turned, 1 / frame.scale)
+}

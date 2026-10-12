@@ -21,7 +21,8 @@ const DML_OPTIONS: InferenceSession.SessionOptions = {
   enableMemPattern: false,
   executionMode: 'sequential'
 }
-const CPU_OPTIONS: InferenceSession.SessionOptions = { executionProviders: ['cpu'] }
+// No CPU arena: it keeps peak-sized buffers (800+ MB for BiRefNet) and failed on busy 16 GB machines.
+const CPU_OPTIONS: InferenceSession.SessionOptions = { executionProviders: ['cpu'], enableCpuMemArena: false }
 // Fatal only: run-time failures are reported once by run() (with the message), not twice.
 const COMMON: InferenceSession.SessionOptions = { graphOptimizationLevel: 'all', logSeverityLevel: 4 }
 
