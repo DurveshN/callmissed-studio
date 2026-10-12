@@ -1,8 +1,10 @@
 import {
   Circle,
   Download,
+  Eraser,
   FolderOpen,
   Hand,
+  ImageMinus,
   ImagePlus,
   Maximize,
   Minus,
@@ -16,6 +18,7 @@ import {
   Type,
   Settings,
   Undo2,
+  WandSparkles,
   X
 } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -26,6 +29,7 @@ import { useToolStore, type Tool } from '../tools/tool-store'
 import { useViewportStore } from '../canvas/viewport-store'
 import { useSettingsUi } from '../settings/settings-ui'
 import { detectText } from '../text-detect/detect'
+import { removeBackground } from '../remove-bg/remove-bg'
 import { useDetectStore } from '../text-detect/detect-store'
 import ui from '../../ui/ui.module.css'
 import styles from './Editor.module.css'
@@ -37,6 +41,12 @@ const TOOLS: { tool: Tool; label: string; key: string; icon: ReactNode }[] = [
   { tool: 'rect', label: 'Rectangle', key: 'R', icon: <Square size={18} /> },
   { tool: 'ellipse', label: 'Ellipse', key: 'E', icon: <Circle size={18} /> },
   { tool: 'line', label: 'Line', key: 'L', icon: <Slash size={18} /> }
+]
+
+/** Tools that edit the pixels of the page or of an image layer. */
+const PIXEL_TOOLS: { tool: Tool; label: string; key: string; icon: ReactNode }[] = [
+  { tool: 'magic', label: 'Magic select — click an object', key: 'W', icon: <WandSparkles size={18} /> },
+  { tool: 'erase', label: 'Eraser — paint over what to remove', key: 'B', icon: <Eraser size={18} /> }
 ]
 
 function IconButton(props: {
@@ -117,6 +127,22 @@ export function TopBar({ onExport }: { onExport(): void }) {
           onClick={() => void detectText()}
         >
           <ScanText size={18} />
+        </IconButton>
+        {PIXEL_TOOLS.map((t) => (
+          <IconButton
+            key={t.tool}
+            label={`${t.label} (${t.key})`}
+            pressed={tool === t.tool}
+            onClick={() => setTool(t.tool)}
+          >
+            {t.icon}
+          </IconButton>
+        ))}
+        <IconButton
+          label="Remove background — of the selected image, or the whole page"
+          onClick={() => void removeBackground()}
+        >
+          <ImageMinus size={18} />
         </IconButton>
       </div>
 

@@ -1,4 +1,4 @@
-import { cpSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { crc32, deflateSync } from 'node:zlib'
@@ -6,8 +6,17 @@ import { _electron as electron, type ElectronApplication, type Page } from '@pla
 import { ModelManifest, type ModelId } from '../../src/shared/ml/models'
 import { ensureModelPack } from '../fixtures/models'
 
+const created: string[] = []
+// Profiles hold copies of the AI models (hundreds of MB each): never leave them behind.
+process.once('exit', () => {
+  for (const dir of created) rmSync(dir, { recursive: true, force: true, maxRetries: 3 })
+})
+
+/** A fresh temporary directory, deleted when the test process exits. */
 export function tempDir(prefix: string): string {
-  return mkdtempSync(join(tmpdir(), `studio-${prefix}-`))
+  const dir = mkdtempSync(join(tmpdir(), `studio-${prefix}-`))
+  created.push(dir)
+  return dir
 }
 
 /** Launches the built app with an isolated profile. */
@@ -42,8 +51,12 @@ export async function openViaMain(app: ElectronApplication, path: string): Promi
   }, path)
 }
 
-/** Solid-color RGB PNG encoded by hand (no image libraries needed). */
-export function makePng(width: number, height: number, rgb: [number, number, number]): Buffer {
+/** RGB PNG encoded by hand (no image libraries needed): one color, or a color per pixel. */
+export function makePng(
+  width: number,
+  height: number,
+  rgb: [number, number, number] | ((x: number, y: number) => [number, number, number])
+): Buffer {
   const chunk = (type: string, data: Buffer) => {
     const body = Buffer.concat([Buffer.from(type, 'ascii'), data])
     const len = Buffer.alloc(4)
@@ -57,8 +70,12 @@ export function makePng(width: number, height: number, rgb: [number, number, num
   ihdr.writeUInt32BE(height, 4)
   ihdr[8] = 8 // bit depth
   ihdr[9] = 2 // truecolor RGB
-  const row = Buffer.concat([Buffer.from([0]), Buffer.from(Array.from({ length: width }, () => rgb).flat())])
-  const raw = Buffer.concat(Array.from({ length: height }, () => row))
+  const color = typeof rgb === 'function' ? rgb : () => rgb
+  const raw = Buffer.concat(
+    Array.from({ length: height }, (_, y) =>
+      Buffer.from([0, ...Array.from({ length: width }, (_, x) => color(x, y)).flat()])
+    )
+  )
   return Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     chunk('IHDR', ihdr),

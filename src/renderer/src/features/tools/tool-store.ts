@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type Tool = 'select' | 'hand' | 'text' | 'rect' | 'ellipse' | 'line'
+export type Tool = 'select' | 'hand' | 'text' | 'rect' | 'ellipse' | 'line' | 'magic' | 'erase'
 
 interface ToolState {
   tool: Tool
@@ -23,5 +23,7 @@ export const TOOL_SHORTCUTS: Record<string, Tool> = {
   t: 'text',
   r: 'rect',
   e: 'ellipse',
-  l: 'line'
+  l: 'line',
+  w: 'magic',
+  b: 'erase'
 }

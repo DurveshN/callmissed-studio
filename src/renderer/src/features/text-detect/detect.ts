@@ -9,15 +9,14 @@ import { matchFont } from '../fonts/font-match'
 import { TEXT_LINE_HEIGHT, type FontCandidate, type FontMatchResult } from '../fonts/font-match-protocol'
 import { MlError, runJob } from '../ml/ml-client'
 import { ensureModel } from '../models/ensure-model'
-import { useModelsStore } from '../models/models-store'
 import { selectActivePage, useDocumentStore } from '../document/store'
-import { writeRaster } from '../raster/raster-edit'
+import { suggestQualityEraser, writeRaster } from '../raster/raster-edit'
 import { cropPixels, currentTarget, snapshot, type RasterSnapshot } from '../raster/raster-target'
+import { useToolStore } from '../tools/tool-store'
 import { looksHandwritten } from './classify'
 import { getSnapshot, resetDetect, setSnapshot, useDetectStore, type DetectedLine } from './detect-store'
 
 let abort: AbortController | null = null
-let eraserTipShown = false
 
 /** Runs OCR on the selected image layer, or on the page if no image layer is selected. */
 export async function detectText(): Promise<void> {
@@ -25,6 +24,8 @@ export async function detectText(): Promise<void> {
   const page = selectActivePage(state)
   if (!state.doc || !page) return
   cancelDetect()
+  // Detected lines are clicked with the Select tool (pixel tools would act on the picture instead).
+  useToolStore.getState().setTool('select')
   const target = currentTarget(page, state.selection)
   useDetectStore.setState({ status: 'preparing', target, progress: 0, lines: [], message: null })
   try {
@@ -295,18 +296,17 @@ export async function convertLines(ids: string[]): Promise<void> {
       if (fresh) setSnapshot(await snapshot(fresh, target))
       useDetectStore.setState({ status: 'ready', lines: remaining, progress: 0 })
     }
-    if (
-      methodUsed === 'telea' &&
-      !eraserTipShown &&
-      useModelsStore.getState().statuses.find((s) => s.id === 'inpaint')?.state !== 'installed'
-    ) {
-      eraserTipShown = true
-      notify.info(
-        'Tip: install the High-quality eraser in Settings for cleaner backgrounds behind converted text.'
-      )
-    }
+    if (methodUsed === 'telea') suggestQualityEraser()
   } catch (error) {
     useDetectStore.setState({ status: 'ready', progress: 0 })
     notify.error(error, 'Could not convert the text')
   }
 }
+
+// Pixel tools act on the picture; detected lines would intercept their clicks.
+useToolStore.subscribe((state) => {
+  const { status } = useDetectStore.getState()
+  if ((state.tool === 'magic' || state.tool === 'erase') && status !== 'idle' && status !== 'converting') {
+    cancelDetect()
+  }
+})

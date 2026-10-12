@@ -41,3 +41,24 @@
     transform: rotate(360deg);
   }
 }
+
+.divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+}
+
+.label {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.range {
+  width: 110px;
+  accent-color: var(--accent);
+}
+
+.segment[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}

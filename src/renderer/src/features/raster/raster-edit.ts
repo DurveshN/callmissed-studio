@@ -4,7 +4,9 @@ import type { MaskCrop } from '@shared/ml/jobs'
 import { call } from '../../lib/ipc'
 import { primeAssetImage } from '../assets/asset-cache'
 import { newImageLayer } from '../document/factories'
+import { notify } from '../../ui/notify'
 import { runJob } from '../ml/ml-client'
+import { useModelsStore } from '../models/models-store'
 import { growMask, maskInRegion, maskRegion, type PixelRegion } from './mask'
 import { cropPixels, encodePng, type RasterSnapshot } from './raster-target'
 
@@ -142,4 +144,23 @@ export async function eraseMask(
     pixels.set(result.pixels.subarray(from, from + changed.width * 4), (y * width + changed.x) * 4)
   }
   return { pixels, region: changed, method: result.method }
+}
+
+let eraserTipShown = false
+
+/** After a fast (Telea) fill: suggests installing the high-quality eraser, once per session. */
+export function suggestQualityEraser(): void {
+  if (eraserTipShown) return
+  if (useModelsStore.getState().statuses.find((s) => s.id === 'inpaint')?.state === 'installed') return
+  eraserTipShown = true
+  notify.info(
+    'Tip: install the High-quality eraser in Settings for cleaner backgrounds where things were removed.'
+  )
+}
+
+/** Index in the page's layers just above the target raster (0 above the page background). */
+export function indexAbove(d: Draft<StudioDocument>, target: RasterSnapshot['target']): number {
+  if (target.kind === 'page') return 0
+  const page = d.pages.find((p) => p.id === target.pageId)
+  return (page?.layers.findIndex((l) => l.id === target.layerId) ?? -1) + 1
 }

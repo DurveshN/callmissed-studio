@@ -1,6 +1,6 @@
 import Konva from 'konva'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Ellipse, Group, Layer as KonvaLayer, Line, Rect, Stage, Transformer } from 'react-konva'
+import { Circle, Ellipse, Group, Layer as KonvaLayer, Line, Rect, Stage, Transformer } from 'react-konva'
 import { useShallow } from 'zustand/react/shallow'
 import type { Layer } from '@shared/document/model'
 import { openLayerMenu } from '../arrange/layer-menu'
@@ -12,6 +12,12 @@ import { cancelDetect } from '../text-detect/detect'
 import { useDetectStore } from '../text-detect/detect-store'
 import { DetectBar } from '../text-detect/DetectBar'
 import { DetectOverlay } from '../text-detect/DetectOverlay'
+import { EraserBar } from '../eraser/EraserBar'
+import { eraseStroke, useEraserStore } from '../eraser/eraser'
+import { clearSelection, selectAt, selectBox } from '../magic-select/magic-select'
+import { SelectBar } from '../magic-select/SelectBar'
+import { SelectOverlay } from '../magic-select/SelectOverlay'
+import { TaskBar } from '../tasks/TaskBar'
 import { LAYER_NAME, LayerNode } from './LayerNode'
 import { PageBackground } from './PageBackground'
 import { registerPageGroup } from './stage-registry'
@@ -23,6 +29,9 @@ import styles from './CanvasView.module.css'
 type Drag =
   | { kind: 'pan'; lastX: number; lastY: number }
   | { kind: 'marquee' | 'rect' | 'ellipse' | 'line'; x0: number; y0: number; x1: number; y1: number }
+  /** Magic Select: a click (tiny drag) selects at a point, a drag selects inside the box. */
+  | { kind: 'box'; x0: number; y0: number; x1: number; y1: number; mode: 'new' | 'add' | 'subtract' }
+  | { kind: 'brush'; points: { x: number; y: number }[] }
 
 const SNAP_PX = 6
 const MIN_DRAW_PX = 4
@@ -58,7 +67,9 @@ function cursorFor(tool: Tool, panning: boolean, space: boolean): string {
   if (panning) return 'grabbing'
   if (space || tool === 'hand') return 'grab'
   if (tool === 'text') return 'text'
-  if (tool === 'rect' || tool === 'ellipse' || tool === 'line') return 'crosshair'
+  if (tool === 'rect' || tool === 'ellipse' || tool === 'line' || tool === 'magic') return 'crosshair'
+  // The eraser draws its own brush outline.
+  if (tool === 'erase') return 'none'
   return 'default'
 }
 
@@ -68,6 +79,9 @@ export function CanvasView() {
   const trRef = useRef<Konva.Transformer>(null)
   const [drag, setDrag] = useState<Drag | null>(null)
   const [guides, setGuides] = useState<Guide[]>([])
+  /** Pointer position (page units) for the eraser's brush outline. */
+  const [hover, setHover] = useState<{ x: number; y: number } | null>(null)
+  const brushSize = useEraserStore((s) => s.size)
   const space = useSpaceKey()
 
   const doc = useDocumentStore((s) => s.doc)
@@ -78,6 +92,8 @@ export function CanvasView() {
     useShallow((s) => ({ scale: s.scale, x: s.x, y: s.y, width: s.width, height: s.height }))
   )
   const tool = useToolStore((s) => s.tool)
+  /** Eraser brush radius in page units (the size is set in screen pixels). */
+  const brushRadius = brushSize / 2 / viewport.scale
   const editingTextId = useToolStore((s) => s.editingTextId)
 
   // Track container size.
@@ -104,10 +120,11 @@ export function CanvasView() {
     return () => registerPageGroup(null)
   }, [pageId])
 
-  // Detected lines belong to one page; switching pages ends that detection.
+  // Detected lines and object selections belong to one page; switching pages ends them.
   useEffect(() => {
     const target = useDetectStore.getState().target
     if (target && target.pageId !== pageId) cancelDetect()
+    clearSelection()
   }, [pageId])
 
   // Attach the transformer to selected, visible, unlocked, non-editing layers.
@@ -116,8 +133,10 @@ export function CanvasView() {
     const tr = trRef.current
     const stage = tr?.getStage()
     if (!tr || !stage || !layers) return
+    // Pixel tools work on the picture; transform handles would get in their way.
+    const pixelTool = tool === 'magic' || tool === 'erase'
     const selectable = layers.filter(
-      (l) => selection.includes(l.id) && l.visible && !l.locked && l.id !== editingTextId
+      (l) => !pixelTool && selection.includes(l.id) && l.visible && !l.locked && l.id !== editingTextId
     )
     tr.nodes(selectable.map((l) => stage.findOne(`#${l.id}`)).filter((n): n is Konva.Node => !!n))
     const only = selectable.length === 1 ? selectable[0] : undefined
@@ -146,7 +165,7 @@ export function CanvasView() {
     }
     tr.keepRatio(only?.type === 'image' || only?.type === 'text')
     tr.getLayer()?.batchDraw()
-  }, [selection, layers, editingTextId])
+  }, [selection, layers, editingTextId, tool])
 
   const layerById = useCallback((id: string): Layer | undefined => layers?.find((l) => l.id === id), [layers])
 
@@ -277,10 +296,20 @@ export function CanvasView() {
 
     if (tool === 'rect' || tool === 'ellipse' || tool === 'line') {
       setDrag({ kind: tool, x0: pos.x, y0: pos.y, x1: pos.x, y1: pos.y })
+      return
     }
+
+    if (tool === 'magic') {
+      const mode = e.evt.shiftKey ? 'add' : e.evt.altKey ? 'subtract' : 'new'
+      setDrag({ kind: 'box', x0: pos.x, y0: pos.y, x1: pos.x, y1: pos.y, mode })
+      return
+    }
+
+    if (tool === 'erase') setDrag({ kind: 'brush', points: [{ x: pos.x, y: pos.y }] })
   }
 
   const onMouseMove = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    if (tool === 'erase') setHover(e.target.getStage()?.getRelativePointerPosition() ?? null)
     if (!drag) return
     if (drag.kind === 'pan') {
       useViewportStore.getState().panBy(e.evt.clientX - drag.lastX, e.evt.clientY - drag.lastY)
@@ -288,19 +317,35 @@ export function CanvasView() {
       return
     }
     const pos = e.target.getStage()?.getRelativePointerPosition()
-    if (pos) setDrag({ ...drag, x1: pos.x, y1: pos.y })
+    if (!pos) return
+    if (drag.kind === 'brush') {
+      const last = drag.points.at(-1)
+      // Sample the stroke about every quarter brush radius.
+      if (!last || Math.hypot(pos.x - last.x, pos.y - last.y) >= brushRadius * 0.25) {
+        setDrag({ kind: 'brush', points: [...drag.points, { x: pos.x, y: pos.y }] })
+      }
+      return
+    }
+    setDrag({ ...drag, x1: pos.x, y1: pos.y })
   }
 
   const finishDrag = () => {
     if (!drag || !page) return setDrag(null)
     setDrag(null)
     if (drag.kind === 'pan') return
+    if (drag.kind === 'brush') return eraseStroke(drag.points, brushRadius)
 
     const x = Math.min(drag.x0, drag.x1)
     const y = Math.min(drag.y0, drag.y1)
     const w = Math.abs(drag.x1 - drag.x0)
     const h = Math.abs(drag.y1 - drag.y0)
     const tiny = Math.max(w, h) * viewport.scale < MIN_DRAW_PX
+
+    if (drag.kind === 'box') {
+      if (tiny || drag.mode !== 'new') selectAt({ x: drag.x0, y: drag.y0 }, drag.mode)
+      else selectBox({ x: drag.x0, y: drag.y0 }, { x: drag.x1, y: drag.y1 })
+      return
+    }
 
     if (drag.kind === 'marquee') {
       if (tiny) return
@@ -365,7 +410,8 @@ export function CanvasView() {
   if (!doc || !page) return <div ref={containerRef} className={styles.container} />
 
   const editingLayer = page.layers.find((l) => l.id === editingTextId)
-  const draft = drag && drag.kind !== 'pan' ? drag : null
+  const draft = drag && drag.kind !== 'pan' && drag.kind !== 'brush' ? drag : null
+  const stroke = drag?.kind === 'brush' ? drag : null
   const px = 1 / viewport.scale
 
   return (
@@ -385,6 +431,7 @@ export function CanvasView() {
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
         onMouseUp={finishDrag}
+        onMouseLeave={() => setHover(null)}
         onWheel={onWheel}
         onContextMenu={onContextMenu}
       >
@@ -444,15 +491,42 @@ export function CanvasView() {
           ))}
           {draft && <DraftShape drag={draft} px={px} />}
           <DetectOverlay pageId={page.id} px={px} />
+          <SelectOverlay pageId={page.id} px={px} />
+          {stroke && (
+            <Line
+              points={stroke.points.flatMap((p) => [p.x, p.y])}
+              stroke="rgba(229, 72, 77, 0.4)"
+              strokeWidth={brushRadius * 2}
+              lineCap="round"
+              lineJoin="round"
+              listening={false}
+            />
+          )}
+          {tool === 'erase' && hover && (
+            <Circle
+              x={hover.x}
+              y={hover.y}
+              radius={brushRadius}
+              stroke="#ffffff"
+              strokeWidth={2 * px}
+              shadowColor="#000000"
+              shadowBlur={2 * px}
+              shadowOpacity={0.8}
+              listening={false}
+            />
+          )}
         </KonvaLayer>
       </Stage>
       {editingLayer?.type === 'text' && <TextEditor key={editingLayer.id} layer={editingLayer} />}
       <DetectBar />
+      <SelectBar />
+      <EraserBar />
+      <TaskBar />
     </div>
   )
 }
 
-function DraftShape({ drag, px }: { drag: Exclude<Drag, { kind: 'pan' }>; px: number }) {
+function DraftShape({ drag, px }: { drag: Exclude<Drag, { kind: 'pan' } | { kind: 'brush' }>; px: number }) {
   const x = Math.min(drag.x0, drag.x1)
   const y = Math.min(drag.y0, drag.y1)
   const width = Math.abs(drag.x1 - drag.x0)
@@ -471,7 +545,7 @@ function DraftShape({ drag, px }: { drag: Exclude<Drag, { kind: 'pan' }>; px: nu
       width={width}
       height={height}
       {...style}
-      fill={drag.kind === 'marquee' ? 'rgba(91,76,240,0.08)' : undefined}
+      fill={drag.kind === 'marquee' || drag.kind === 'box' ? 'rgba(91,76,240,0.08)' : undefined}
     />
   )
 }

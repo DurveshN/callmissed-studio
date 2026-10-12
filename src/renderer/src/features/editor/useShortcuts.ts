@@ -4,6 +4,8 @@ import { deleteLayers, duplicateLayers, nudgeLayers, shiftLayers } from '../docu
 import { selectActivePage, useDocumentStore } from '../document/store'
 import { cancelDetect, detectText } from '../text-detect/detect'
 import { useDetectStore } from '../text-detect/detect-store'
+import { applySelection, clearSelection } from '../magic-select/magic-select'
+import { useSelectStore } from '../magic-select/select-store'
 import { TOOL_SHORTCUTS, useToolStore } from '../tools/tool-store'
 
 function isTyping(target: EventTarget | null): boolean {
@@ -56,9 +58,17 @@ export function useShortcuts(onExport: () => void): void {
         return
       }
 
-      if (key === 'delete' || key === 'backspace') return run(() => deleteLayers(selection))
+      const objectSelected = useSelectStore.getState().mask !== null
+      if (key === 'delete' || key === 'backspace') {
+        return run(() => (objectSelected ? applySelection('delete') : deleteLayers(selection)))
+      }
       if (key === 'escape') {
-        return run(() => (useDetectStore.getState().status !== 'idle' ? cancelDetect() : select([])))
+        return run(() => {
+          if (objectSelected) clearSelection()
+          else if (useDetectStore.getState().status !== 'idle') cancelDetect()
+          else if (useToolStore.getState().tool !== 'select') useToolStore.getState().setTool('select')
+          else select([])
+        })
       }
       if (key === 'd') return run(() => void detectText())
       if (key === 'i') return run(() => void commands.insertImage())

@@ -1,8 +1,8 @@
-import { Loader2, ScanText, X } from 'lucide-react'
+import { ScanText } from 'lucide-react'
 import ui from '../../ui/ui.module.css'
+import { FloatingBar } from '../../ui/FloatingBar'
 import { cancelDetect, convertLines } from './detect'
 import { useDetectStore } from './detect-store'
-import styles from './DetectBar.module.css'
 
 /** Floating status bar over the canvas while Detect Text is active. */
 export function DetectBar() {
@@ -27,18 +27,21 @@ export function DetectBar() {
   }
 
   return (
-    <div className={styles.bar} role="status" data-testid="detect-bar" data-status={status}>
-      {busy ? <Loader2 size={16} className={styles.spin} /> : <ScanText size={16} />}
-      <span className={styles.text}>{text}</span>
-      {busy && <span className={styles.percent}>{Math.round(progress * 100)}%</span>}
+    <FloatingBar
+      testId="detect-bar"
+      status={status}
+      text={text}
+      icon={<ScanText size={16} />}
+      busy={busy}
+      progress={progress}
+      onClose={cancelDetect}
+      closeLabel="Close text detection"
+    >
       {status === 'ready' && printed.length > 0 && (
         <button className={ui.primaryButton} onClick={() => void convertLines(printed.map((l) => l.id))}>
           Convert all
         </button>
       )}
-      <button className={ui.iconButton} aria-label="Close text detection" onClick={cancelDetect}>
-        <X size={16} />
-      </button>
-    </div>
+    </FloatingBar>
   )
 }
