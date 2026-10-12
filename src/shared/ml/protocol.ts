@@ -5,7 +5,7 @@ import type { ModelPack } from './models'
  * Kept free of runtime dependencies so the preload bundle stays small; the worker validates with jobs.ts.
  */
 
-export type JobKind = 'probe' | 'ocr' | 'inpaint'
+export type JobKind = 'probe' | 'ocr' | 'inpaint' | 'segment-prepare' | 'segment' | 'remove-bg'
 
 export interface JobRequest {
   type: 'run'
@@ -31,6 +31,8 @@ export type MlErrorCode =
   | 'MODEL_MISSING'
   | 'MODEL_LOAD_FAILED'
   | 'CANCELLED'
+  /** `segment` ran without `segment-prepare` for that image (or the worker restarted since). */
+  | 'NOT_PREPARED'
   | 'WORKER_RESTARTED'
   | 'WORKER_UNAVAILABLE'
   | 'INTERNAL'

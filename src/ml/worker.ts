@@ -17,6 +17,8 @@ import type {
 import { inpaint } from './handlers/inpaint'
 import { ocr } from './handlers/ocr'
 import { probe } from './handlers/probe'
+import { removeBg } from './handlers/remove-bg'
+import { NotPreparedError, segment, segmentPrepare } from './handlers/segment'
 import { CancelledError, JobQueue } from './job-queue'
 import { ModelLoadError, ModelMissingError, SessionPool } from './session-pool'
 
@@ -49,6 +51,7 @@ function classify(error: unknown): { code: MlErrorCode; message: string } {
     return { code: 'MODEL_MISSING', message: 'This feature needs a model that is not installed.' }
   }
   if (error instanceof ModelLoadError) return { code: 'MODEL_LOAD_FAILED', message: error.message }
+  if (error instanceof NotPreparedError) return { code: 'NOT_PREPARED', message: error.message }
   const message = error instanceof Error ? error.message : String(error)
   return { code: 'INTERNAL', message }
 }
@@ -78,6 +81,15 @@ async function execute(job: JobRequest, signal: AbortSignal, reply: (m: FromWork
         break
       case 'inpaint':
         result = await inpaint(input.data as JobInput<'inpaint'>, ctx)
+        break
+      case 'segment-prepare':
+        result = await segmentPrepare(input.data as JobInput<'segment-prepare'>, ctx)
+        break
+      case 'segment':
+        result = await segment(input.data as JobInput<'segment'>, ctx)
+        break
+      case 'remove-bg':
+        result = await removeBg(input.data as JobInput<'remove-bg'>, ctx)
         break
     }
     reply({ type: 'result', id: job.id, result })

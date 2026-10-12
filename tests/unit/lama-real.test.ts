@@ -8,9 +8,9 @@ import { readPng } from '../fixtures/png'
 
 /**
  * Runs the real LaMa model (208 MB, cached in .cache/models after the first download).
- * Opt-in because of the download size: STUDIO_TEST_LAMA=1 npm test
+ * Opt-in because of the download size: STUDIO_TEST_HEAVY=1 npm test
  */
-describe.runIf(process.env['STUDIO_TEST_LAMA'] === '1')('LaMa inpainting on the real model', () => {
+describe.runIf(process.env['STUDIO_TEST_HEAVY'] === '1')('LaMa inpainting on the real model', () => {
   it('erases white text on a gradient so the area blends with its surroundings', async () => {
     const root = await ensureModelPack('inpaint')
     const session = await InferenceSession.create(join(root, 'inpaint', 'lama_fp32.onnx'), {

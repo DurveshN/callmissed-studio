@@ -98,3 +98,56 @@ export function toHex(r: number, g: number, b: number): string {
       .padStart(2, '0')
   return `#${h(r)}${h(g)}${h(b)}`
 }
+
+/** Contributions of source pixels to each output pixel of a 1-D triangle-filter resize. */
+function triangleTaps(inSize: number, outSize: number): { start: number; weights: Float32Array }[] {
+  const scale = inSize / outSize
+  // Widening the filter when shrinking averages all covered pixels instead of skipping some (aliasing).
+  const support = Math.max(1, scale)
+  return Array.from({ length: outSize }, (_, i) => {
+    const center = (i + 0.5) * scale
+    const start = Math.max(0, Math.floor(center - support))
+    const end = Math.min(inSize, Math.ceil(center + support))
+    const weights = new Float32Array(end - start)
+    let sum = 0
+    for (let j = start; j < end; j++) {
+      const w = Math.max(0, 1 - Math.abs((j + 0.5 - center) / support))
+      weights[j - start] = w
+      sum += w
+    }
+    if (sum > 0) for (let k = 0; k < weights.length; k++) weights[k] = (weights[k] as number) / sum
+    return { start, weights }
+  })
+}
+
+/** Bilinear resize that also averages properly when shrinking (like PIL's BILINEAR). */
+export function resizeSmooth(src: Rgba, width: number, height: number): Rgba {
+  const xTaps = triangleTaps(src.width, width)
+  const yTaps = triangleTaps(src.height, height)
+  const tmp = new Float32Array(width * src.height * 4)
+  for (let y = 0; y < src.height; y++) {
+    for (let x = 0; x < width; x++) {
+      const { start, weights } = xTaps[x] as { start: number; weights: Float32Array }
+      const o = (y * width + x) * 4
+      for (let k = 0; k < weights.length; k++) {
+        const i = (y * src.width + start + k) * 4
+        const w = weights[k] as number
+        for (let c = 0; c < 4; c++) tmp[o + c] = (tmp[o + c] as number) + (src.data[i + c] as number) * w
+      }
+    }
+  }
+  const dst = createRgba(width, height)
+  for (let y = 0; y < height; y++) {
+    const { start, weights } = yTaps[y] as { start: number; weights: Float32Array }
+    for (let x = 0; x < width; x++) {
+      const o = (y * width + x) * 4
+      for (let c = 0; c < 4; c++) {
+        let v = 0
+        for (let k = 0; k < weights.length; k++)
+          v += (tmp[((start + k) * width + x) * 4 + c] as number) * (weights[k] as number)
+        dst.data[o + c] = Math.round(Math.min(255, Math.max(0, v)))
+      }
+    }
+  }
+  return dst
+}

@@ -7,16 +7,35 @@ const Bytes = z.custom<Uint8Array>((v) => v instanceof Uint8Array, { message: 'E
 
 const MAX_SIDE = 16384
 
+const ImageFields = {
+  width: z.number().int().min(1).max(MAX_SIDE),
+  height: z.number().int().min(1).max(MAX_SIDE),
+  pixels: Bytes
+}
+const pixelsMatch = (i: { width: number; height: number; pixels: Uint8Array }) =>
+  i.pixels.length === i.width * i.height * 4
+
 /** An RGBA image; `pixels.length` must equal width × height × 4. */
 const Image = z
+  .object(ImageFields)
+  .refine(pixelsMatch, { message: 'pixels must be width × height × 4 bytes' })
+
+const Provider = z.enum(['dml', 'cpu'])
+
+/** A click on the object (label 1) or on what to exclude (label 0), in image pixels. */
+const PromptPoint = z.object({ x: z.number(), y: z.number(), label: z.union([z.literal(0), z.literal(1)]) })
+
+/** Mask of a region (255 = inside) cropped to its bounding box at (x, y) of the image. */
+export const MaskCrop = z
   .object({
-    width: z.number().int().min(1).max(MAX_SIDE),
-    height: z.number().int().min(1).max(MAX_SIDE),
-    pixels: Bytes
+    x: z.number().int().nonnegative(),
+    y: z.number().int().nonnegative(),
+    width: z.number().int().min(1),
+    height: z.number().int().min(1),
+    data: Bytes
   })
-  .refine((i) => i.pixels.length === i.width * i.height * 4, {
-    message: 'pixels must be width × height × 4 bytes'
-  })
+  .refine((m) => m.data.length === m.width * m.height, { message: 'mask size mismatch' })
+export type MaskCrop = z.infer<typeof MaskCrop>
 
 export const RotatedRect = z.object({
   cx: z.number(),
@@ -51,7 +70,7 @@ export const jobs = {
     input: z.object({ model: ModelId }),
     result: z.object({
       model: ModelId,
-      provider: z.enum(['dml', 'cpu']),
+      provider: Provider,
       loadMs: z.number(),
       sessions: z.array(
         z.object({ file: z.string(), inputs: z.array(z.string()), outputs: z.array(z.string()) })
@@ -60,7 +79,7 @@ export const jobs = {
   },
   ocr: {
     input: Image,
-    result: z.object({ lines: z.array(OcrLine), provider: z.enum(['dml', 'cpu']) })
+    result: z.object({ lines: z.array(OcrLine), provider: Provider })
   },
   inpaint: {
     input: z
@@ -78,6 +97,29 @@ export const jobs = {
       .refine((i) => !i.mask || i.mask.length === i.width * i.height, { message: 'mask size mismatch' })
       .refine((i) => i.mask || i.textRects?.length, { message: 'mask or textRects required' }),
     result: z.object({ pixels: Bytes, method: z.enum(['lama', 'telea']) })
+  },
+  /** Encodes an image for object selection once; later `segment` calls refer to it by `key`. */
+  'segment-prepare': {
+    input: z
+      .object({ key: z.string().min(1).max(200), ...ImageFields })
+      .refine(pixelsMatch, { message: 'pixels size mismatch' }),
+    result: z.object({ provider: Provider })
+  },
+  segment: {
+    input: z
+      .object({
+        key: z.string().min(1).max(200),
+        points: z.array(PromptPoint).max(64),
+        box: z.object({ x0: z.number(), y0: z.number(), x1: z.number(), y1: z.number() }).optional()
+      })
+      .refine((i) => i.points.length > 0 || i.box, { message: 'points or box required' }),
+    /** Null when nothing was selected. `score` is the model's own quality estimate (0..1). */
+    result: z.object({ mask: MaskCrop.nullable(), score: z.number() })
+  },
+  'remove-bg': {
+    input: Image,
+    /** Opacity of the foreground per pixel (0..255), width × height bytes. */
+    result: z.object({ alpha: Bytes, provider: Provider })
   }
 } as const satisfies Record<JobKind, { input: z.ZodType; result: z.ZodType }>
 
