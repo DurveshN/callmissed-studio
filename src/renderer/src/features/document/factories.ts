@@ -52,9 +52,10 @@ export function newShapeLayer(
 export function newImageLayer(
   assetId: string,
   name: string,
-  box: { x: number; y: number; width: number; height: number }
+  box: { x: number; y: number; width: number; height: number; rotation?: number },
+  origin: ImageLayer['origin'] = 'import'
 ): ImageLayer {
-  return { ...base(name), type: 'image', assetId, origin: 'import', ...box }
+  return { ...base(name), type: 'image', assetId, origin, ...box, rotation: box.rotation ?? 0 }
 }
 
 /** Fits a w×h box inside maxW×maxH (never upscales), centered in the page. */

@@ -19,6 +19,8 @@ export interface RasterSnapshot {
   image: ImageData
   /** Maps a pixel position of `image` to page coordinates. */
   toPage(p: Point): Point
+  /** Maps page coordinates to a pixel position of `image` (inverse of toPage). */
+  fromPage(p: Point): Point
   /** Page units per image pixel (uniform for pages; per-axis average for layers). */
   scale: number
   /** Extra rotation (degrees) applied to the raster on the page. */
@@ -52,6 +54,7 @@ async function snapshotPage(doc: StudioDocument, page: Page): Promise<RasterSnap
     target: { kind: 'page', pageId: page.id },
     image: ctx.getImageData(0, 0, width, height),
     toPage: (p) => p,
+    fromPage: (p) => p,
     scale: 1,
     rotation: 0
   }
@@ -74,6 +77,11 @@ async function snapshotLayer(doc: StudioDocument, page: Page, layer: ImageLayer)
       x: layer.x + x * sx * cos - y * sy * sin,
       y: layer.y + x * sx * sin + y * sy * cos
     }),
+    fromPage: ({ x, y }) => {
+      const dx = x - layer.x
+      const dy = y - layer.y
+      return { x: (dx * cos + dy * sin) / sx, y: (-dx * sin + dy * cos) / sy }
+    },
     scale: (sx + sy) / 2,
     rotation: layer.rotation
   }
@@ -97,6 +105,30 @@ export function currentTarget(page: Page, selection: string[]): RasterTarget {
     : { kind: 'page', pageId: page.id }
 }
 
+/** The topmost visible, unlocked image layer under page point `p`, or the page itself. */
+export function targetAt(page: Page, p: Point): RasterTarget {
+  for (let i = page.layers.length - 1; i >= 0; i--) {
+    const layer = page.layers[i]
+    if (layer?.type !== 'image' || !layer.visible || layer.locked) continue
+    const rad = (layer.rotation * Math.PI) / 180
+    const dx = p.x - layer.x
+    const dy = p.y - layer.y
+    const u = dx * Math.cos(rad) + dy * Math.sin(rad)
+    const v = -dx * Math.sin(rad) + dy * Math.cos(rad)
+    if (u >= 0 && v >= 0 && u <= layer.width && v <= layer.height) {
+      return { kind: 'layer', pageId: page.id, layerId: layer.id }
+    }
+  }
+  return { kind: 'page', pageId: page.id }
+}
+
+export const sameTarget = (a: RasterTarget | null, b: RasterTarget | null): boolean =>
+  !!a &&
+  !!b &&
+  a.kind === b.kind &&
+  a.pageId === b.pageId &&
+  (a.kind === 'page' || (b.kind === 'layer' && a.layerId === b.layerId))
+
 /** Encodes RGBA pixels as PNG bytes. */
 export async function encodePng(
   pixels: Uint8ClampedArray | Uint8Array,
@@ -111,7 +143,7 @@ export async function encodePng(
 
 /** Copies a rectangle of an ImageData into a tightly packed RGBA buffer. */
 export function cropPixels(
-  image: ImageData,
+  image: { width: number; data: Uint8ClampedArray | Uint8Array },
   x: number,
   y: number,
   width: number,

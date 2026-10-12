@@ -1,58 +1,23 @@
 import type { Draft } from 'immer'
 import type { Layer, StudioDocument, TextLayer } from '@shared/document/model'
 import { rectCorners, type Point, type RotatedRect } from '@shared/geometry/rotated-rect'
-import { call } from '../../lib/ipc'
-import { confirm } from '../../ui/confirm'
 import { notify } from '../../ui/notify'
-import { primeAssetImage } from '../assets/asset-cache'
 import { measureTextHeight } from '../canvas/text-metrics'
 import { DEFAULT_FONT } from '../fonts/catalog'
 import { chooseFonts } from '../fonts/font-consensus'
 import { matchFont } from '../fonts/font-match'
 import { TEXT_LINE_HEIGHT, type FontCandidate, type FontMatchResult } from '../fonts/font-match-protocol'
 import { MlError, runJob } from '../ml/ml-client'
-import { modelActions, useModelsStore } from '../models/models-store'
+import { ensureModel } from '../models/ensure-model'
+import { useModelsStore } from '../models/models-store'
 import { selectActivePage, useDocumentStore } from '../document/store'
-import { cropPixels, currentTarget, encodePng, snapshot, type RasterSnapshot } from '../raster/raster-target'
+import { writeRaster } from '../raster/raster-edit'
+import { cropPixels, currentTarget, snapshot, type RasterSnapshot } from '../raster/raster-target'
 import { looksHandwritten } from './classify'
 import { getSnapshot, resetDetect, setSnapshot, useDetectStore, type DetectedLine } from './detect-store'
 
 let abort: AbortController | null = null
 let eraserTipShown = false
-
-/** Waits until the OCR pack is installed, offering to download it first. Returns false if declined or failed. */
-async function ensureOcrModel(): Promise<boolean> {
-  const status = () => useModelsStore.getState().statuses.find((s) => s.id === 'ocr')
-  if (status()?.state === 'installed') return true
-  const choice = await confirm({
-    title: 'Download text detection?',
-    message:
-      'Detecting text needs the Text detection model (about 21 MB). It is downloaded once and then works offline.',
-    choices: [
-      { id: 'download', label: 'Download' },
-      { id: 'cancel', label: 'Cancel' }
-    ] as const,
-    cancel: 'cancel'
-  })
-  if (choice === 'cancel') return false
-  await modelActions.download(['ocr'])
-  useDetectStore.setState({
-    status: 'preparing',
-    progress: 0,
-    message: 'Downloading the text detection model…'
-  })
-  return new Promise((resolve) => {
-    const unsubscribe = useModelsStore.subscribe((state) => {
-      const s = state.statuses.find((x) => x.id === 'ocr')
-      if (!s) return
-      useDetectStore.setState({ progress: s.totalBytes ? s.receivedBytes / s.totalBytes : 0 })
-      if (s.state === 'installed' || s.state === 'error' || s.state === 'missing') {
-        unsubscribe()
-        resolve(s.state === 'installed')
-      }
-    })
-  })
-}
 
 /** Runs OCR on the selected image layer, or on the page if no image layer is selected. */
 export async function detectText(): Promise<void> {
@@ -63,7 +28,14 @@ export async function detectText(): Promise<void> {
   const target = currentTarget(page, state.selection)
   useDetectStore.setState({ status: 'preparing', target, progress: 0, lines: [], message: null })
   try {
-    if (!(await ensureOcrModel())) return resetDetect()
+    const ready = await ensureModel('ocr', 'Detecting text', (progress) =>
+      useDetectStore.setState({
+        status: 'preparing',
+        progress,
+        message: 'Downloading the text detection model…'
+      })
+    )
+    if (!ready) return resetDetect()
     const snap = await snapshot(state.doc, target)
     setSnapshot(snap)
     useDetectStore.setState({ status: 'detecting', progress: 0, message: null })
@@ -251,13 +223,6 @@ function textLayerFor(line: DetectedLine, snap: RasterSnapshot, match: FontCandi
   return { ...layer, height: measureTextHeight(layer) }
 }
 
-async function writeAsset(docId: string, bytes: Uint8Array): Promise<string> {
-  const assetId = crypto.randomUUID()
-  await call('asset:write', { docId, assetId, mime: 'image/png', bytes })
-  await primeAssetImage(assetId, bytes)
-  return assetId
-}
-
 /**
  * Replaces the given detected lines with editable text: erases the original pixels (one patch per
  * group of nearby lines, or a new layer image) and adds matching text layers — all in one undo step.
@@ -274,7 +239,6 @@ export async function convertLines(ids: string[]): Promise<void> {
     const { image } = snap
     const regions = lineRegions(lines, image.width, image.height)
     const filled = new Uint8ClampedArray(image.data)
-    const patches: { assetId: string; x: number; y: number; width: number; height: number }[] = []
     let methodUsed: 'lama' | 'telea' = 'lama'
 
     for (const [n, region] of regions.entries()) {
@@ -300,20 +264,13 @@ export async function convertLines(ids: string[]): Promise<void> {
           ((region.y + row) * image.width + region.x) * 4
         )
       }
-      if (snap.target.kind === 'page') {
-        const bytes = await encodePng(result.pixels, region.width, region.height)
-        patches.push({ assetId: await writeAsset(docId, bytes), ...region })
-      }
       useDetectStore.setState({ progress: ((n + 1) / regions.length) * 0.7 })
     }
 
     const textLayers: TextLayer[] = []
     const fonts = await fontsFor(lines, snap)
     for (const line of lines) textLayers.push(textLayerFor(line, snap, fonts.get(line.id) ?? null))
-    const layerAsset =
-      snap.target.kind === 'layer'
-        ? await writeAsset(docId, await encodePng(filled, image.width, image.height))
-        : null
+    const write = await writeRaster(docId, snap, filled, regions)
 
     const target = snap.target
     useDocumentStore
@@ -321,24 +278,9 @@ export async function convertLines(ids: string[]): Promise<void> {
       .commit(
         lines.length > 1 ? `Convert ${lines.length} text lines` : 'Convert text',
         (d: Draft<StudioDocument>) => {
-          const page = d.pages.find((p) => p.id === target.pageId)
-          if (!page) return
-          for (const patch of patches) {
-            d.assets[patch.assetId] = { mime: 'image/png' }
-            page.patches.push({ id: crypto.randomUUID(), ...patch })
-          }
-          let insertAt = 0
-          if (target.kind === 'layer' && layerAsset) {
-            const index = page.layers.findIndex((l) => l.id === target.layerId)
-            const layer = page.layers[index]
-            if (layer?.type === 'image') {
-              d.assets[layerAsset] = { mime: 'image/png' }
-              layer.assetId = layerAsset
-            }
-            insertAt = index + 1
-          }
+          const insertAt = write(d)
           // Text that was part of the picture sits directly above it, below anything the user added on top.
-          page.layers.splice(insertAt, 0, ...(textLayers as Layer[]))
+          d.pages.find((p) => p.id === target.pageId)?.layers.splice(insertAt, 0, ...(textLayers as Layer[]))
         }
       )
     useDocumentStore.getState().select(textLayers.map((l) => l.id))
