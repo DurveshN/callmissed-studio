@@ -20,7 +20,11 @@ CallMissed Studio — open-source (MIT) Windows Electron app: local OCR/segmenta
   - Adjust: brightness, contrast and saturation on image layers and pages.
   - Crop tool (`C`) for the page or an image; page rotate 90° and resize in the Inspector.
   - Every tool works on the page or on any image layer, including AI results.
-- Next: M5 PDF (native text layers, page ops, export with real text + embedded subset fonts, variable-font instancing).
+- **M5 PDF done** (tag `m5-pdf`):
+  - Detect Text reads a PDF page's own text: exact words, font, size and baseline. Invisible text is skipped. Scans use OCR.
+  - Export → PDF writes all pages: untouched pages are copied, edits are drawn over them as real text with embedded fonts. Optional searchable scans. "Remove replaced text" is on by default.
+  - Pages panel: drag to reorder; Move, Rotate and Delete from the menu.
+- Next: M6 AI generation panel (CallMissed image-to-image, history, usage).
 
 ## Pinned toolchain (compatibility-constrained)
 
@@ -103,14 +107,28 @@ CallMissed Studio — open-source (MIT) Windows Electron app: local OCR/segmenta
   - Both share the page-operation queue.
   - The canvas re-fits whenever the page size changes, including on undo.
 - **Memory**: models unused for 3 minutes are unloaded (`SessionPool.releaseIdle`, swept every minute; never while running) and reload on next use. The Magic Select embeddings cache is kept. CPU sessions run without ONNX Runtime's memory arena. The arena keeps peak-sized buffers (800+ MB for BiRefNet), and background removal failed with it on a busy 16 GB machine.
+- **PDF export** (`main/services/pdf-writer.ts`, `font-files.ts`; plan schema `shared/pdf/plan.ts`; built by `renderer/features/export/pdf-plan.ts`):
+  - **Libraries:** `@cantoo/pdf-lib` with `@cantoo/fontkit`. `@pdf-lib/fontkit` crashes when subsetting with this fork.
+  - **Page plans:** the renderer resolves everything that depends on screen layout: Konva line breaks and baselines (`textLayout`), and each copied page's view→PDF matrix from pdf.js (`shared/pdf/view-matrix.ts`, which handles /Rotate and crop boxes). Main draws it all.
+  - **Units:** page units → points = 1/PDF_RENDER_SCALE for PDF documents, 0.75 for images (96 dpi).
+  - **Fonts:** bundled fonts are read from out/renderer (or src/renderer/public in dev); Windows fonts are found through the registry (`reg query`), including `.ttc` faces. A variable font is embedded as its default instance; any other weight is drawn as outlines from fontkit (`getVariation`) with invisible text on top. That keeps it exact and searchable; static instances would have added about 20 MB. Missing bold/italic faces are synthesised (stroke, 14° skew) as Chromium does.
+  - **Image formats:** pictures that aren't PNG/JPEG, adjusted images and adjusted pages are baked into PNGs by the renderer (`plan.images`).
+  - **Searchable:** pages without real text get OCR lines as invisible text (render mode 3), squeezed (`Tz`) to each line's width.
+  - **Remove replaced text:** PDF pages with patches are written as pictures, so text hidden under an edit doesn't survive in the file.
+  - **Save path:** main only writes PDFs to a path the user just chose (`export:choose-pdf-path` → `export:write-pdf`).
+- **Native PDF text** (`text-detect/pdf-text.ts`, `pdf-runs.ts`):
+  - pdf.js runs (with `fontExtraProperties`) are grouped into lines per font and baseline.
+  - Font names are parsed into a catalog family, weight and italic. A family outside the catalog that is installed (`fonts/installed.ts`; aliases like Helvetica→Arial don't count) is used as is; anything else is matched from the rendered pixels.
+  - Lines without ink are skipped, and so are lines under existing patches.
+  - Text layers get `origin: 'pdf-native'`, with Konva's first baseline placed on the PDF baseline.
 - e2e helpers delete their temp profiles on exit: each profile holds model copies, and 12 GB of leftovers once filled the disk.
 - GPU mode changes are acknowledged by the worker (`configure` + `ack`), `settings:update` awaits it, and `runJob` awaits any in-flight settings save.
 - Packaging: `electron-builder.yml` unpacks `onnxruntime-node` from asar and drops non-win-x64 binaries (verify in M7).
 
 ## Testing
 
-- `npm test` — Vitest unit (119 tests incl. opt-in real LaMa / SAM 2.1 / BiRefNet tests via `STUDIO_TEST_HEAVY=1`; real OCR models are downloaded once into `.cache/models`, SHA-256 verified): IPC contracts, CSP, protocol path guard, project zip, library DB, project service, document store, snapping, arrange, model manager (local HTTP server: resume, bad checksum, 404, cancel, version bump), session pool fallback, job queue, manifest pinning/licences, ONNX fixture.
-- `npm run test:e2e` — builds then Playwright drives Electron (37 tests: objects.spec covers Magic Select / Eraser / Remove background / Lift handwriting / Adjust, geometry.spec covers rotate / resize / crop, incl. Detect Text with real OCR models seeded via `seedModels`). Helpers in `tests/e2e/helpers.ts`: isolated profile via `STUDIO_USER_DATA`, `launchApp({ modelSetupDone })` seeds settings, dialog stubs, generated PNG/PDF fixtures, `closeApp()` force-exits (native unsaved-changes modal would hang the run). `tests/fixtures/onnx.ts` hand-encodes a tiny Identity ONNX model so model tests never hit the network.
+- `npm test` — Vitest unit (140 tests incl. opt-in real LaMa / SAM 2.1 / BiRefNet tests via `STUDIO_TEST_HEAVY=1`; real OCR models are downloaded once into `.cache/models`, SHA-256 verified): IPC contracts, CSP, protocol path guard, project zip, library DB, project service, document store, snapping, arrange, model manager (local HTTP server: resume, bad checksum, 404, cancel, version bump), session pool fallback, job queue, manifest pinning/licences, ONNX fixture.
+- `npm run test:e2e` — builds then Playwright drives Electron (46 tests: pdf.spec covers PDF export, native text, removing replaced text, searchable scans, page ops and installed fonts; layers.spec covers transparency and background choice; objects.spec covers Magic Select / Eraser / Remove background / Lift handwriting / Adjust, geometry.spec covers rotate / resize / crop, incl. Detect Text with real OCR models seeded via `seedModels`). Helpers in `tests/e2e/helpers.ts`: isolated profile via `STUDIO_USER_DATA`, `launchApp({ modelSetupDone })` seeds settings, dialog stubs, generated PNG/PDF fixtures, `closeApp()` force-exits (native unsaved-changes modal would hang the run). `tests/fixtures/onnx.ts` hand-encodes a tiny Identity ONNX model so model tests never hit the network.
 
 ## Decisions log
 

@@ -131,13 +131,15 @@ Layer =
 ### 4.2 PDF
 
 - Render each page with pdf.js at 2× device scale for editing.
-- Native text (pdf.js `getTextContent`) → TextLayers `origin: 'pdf-native'`, no OCR needed.
+- Native text (pdf.js `getTextContent`) → TextLayers `origin: 'pdf-native'`, no OCR needed. This is offered through Detect Text, with exact words, font, size and baseline. Invisible text is skipped. Fonts outside the catalog are used when installed, and otherwise matched from the pixels.
 - Pages with no text content → offered Detect Text (OCR).
 - Page ops: reorder, delete, rotate.
 - Export:
   - untouched pages copied unchanged (`copyPages`), keeping vectors;
   - edited pages: original page + erase patch over edited text regions + new text as real text with embedded subset font + added layers drawn on top;
   - optional **Make searchable**: invisible OCR text layer (text render mode 3) for scanned pages.
+  - **Remove replaced text** (on by default): edited PDF pages are written as pictures, so text replaced by an edit is really gone.
+  - Fonts: real embedded subset fonts. A variable font at a non-default weight is drawn from its exact outlines, with invisible text on top, instead of shipping static instances (about 20 MB).
 - Known limitation (documented in UI and README): native text is replaced by erase + overlay, not edited in place inside the content stream.
 
 ### 4.3 Export
