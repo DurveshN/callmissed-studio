@@ -12,6 +12,14 @@ export interface LoadedSession {
 
 type CreateSession = (path: string, options: InferenceSession.SessionOptions) => Promise<InferenceSession>
 
+/** Models unused this long are unloaded (memory back to the system; the next use reloads them). */
+export const IDLE_RELEASE_MS = 3 * 60_000
+
+export interface PoolTiming {
+  idleMs?: number
+  now?: () => number
+}
+
 export class ModelMissingError extends Error {}
 export class ModelLoadError extends Error {}
 
@@ -39,12 +47,22 @@ export class SessionPool {
   private gpuBroken = false
   /** Model files that failed at run time on DirectML. */
   private readonly cpuOnly = new Set<string>()
+  /** Last use and number of runs in progress, per session key. */
+  private readonly lastUsed = new Map<string, number>()
+  private readonly busy = new Map<string, number>()
+  private sweeper: ReturnType<typeof setInterval> | null = null
+  private readonly idleMs: number
+  private readonly now: () => number
 
   constructor(
     private readonly create: CreateSession,
     private readonly onGpuFailed: (message: string) => void,
-    private readonly onCpuOnly: (file: string) => void = () => undefined
-  ) {}
+    private readonly onCpuOnly: (file: string) => void = () => undefined,
+    timing: PoolTiming = {}
+  ) {
+    this.idleMs = timing.idleMs ?? IDLE_RELEASE_MS
+    this.now = timing.now ?? Date.now
+  }
 
   /** Applies new settings; resolves once sessions created under the old settings are released. */
   async configure(modelsDir: string, gpu: GpuMode, cpuOnly: string[] = []): Promise<void> {
@@ -66,6 +84,8 @@ export class SessionPool {
 
   get(modelId: string, file: string): Promise<LoadedSession> {
     const key = `${modelId}/${file}`
+    this.lastUsed.set(key, this.now())
+    this.startSweeping()
     let pending = this.sessions.get(key)
     if (!pending) {
       pending = this.load(join(this.modelsDir, modelId, file), this.cpuOnly.has(key))
@@ -80,6 +100,21 @@ export class SessionPool {
    * `work` is retried once there.
    */
   async run<T>(
+    modelId: string,
+    file: string,
+    work: (session: InferenceSession) => Promise<T>
+  ): Promise<{ result: T; provider: Provider }> {
+    const key = `${modelId}/${file}`
+    this.busy.set(key, (this.busy.get(key) ?? 0) + 1)
+    try {
+      return await this.runOnce(modelId, file, work)
+    } finally {
+      this.busy.set(key, (this.busy.get(key) ?? 1) - 1)
+      this.lastUsed.set(key, this.now())
+    }
+  }
+
+  private async runOnce<T>(
     modelId: string,
     file: string,
     work: (session: InferenceSession) => Promise<T>
@@ -135,9 +170,35 @@ export class SessionPool {
     )
   }
 
+  /** Unloads sessions that are not running and were last used more than the idle time ago. */
+  async releaseIdle(): Promise<void> {
+    const cutoff = this.now() - this.idleMs
+    const idle = [...this.sessions.entries()].filter(
+      ([key]) => !this.busy.get(key) && (this.lastUsed.get(key) ?? 0) <= cutoff
+    )
+    for (const [key] of idle) this.sessions.delete(key)
+    if (this.sessions.size === 0) this.stopSweeping()
+    await Promise.all(
+      idle.map(([, pending]) => pending.then((s) => s.session.release()).catch(() => undefined))
+    )
+  }
+
+  private startSweeping(): void {
+    if (this.sweeper) return
+    this.sweeper = setInterval(() => void this.releaseIdle(), Math.max(1000, this.idleMs / 3))
+    // Never keeps the worker process alive on its own.
+    this.sweeper.unref?.()
+  }
+
+  private stopSweeping(): void {
+    if (this.sweeper) clearInterval(this.sweeper)
+    this.sweeper = null
+  }
+
   async releaseAll(): Promise<void> {
     const all = [...this.sessions.values()]
     this.sessions.clear()
+    this.stopSweeping()
     await Promise.all(all.map((p) => p.then((s) => s.session.release()).catch(() => undefined)))
   }
 }

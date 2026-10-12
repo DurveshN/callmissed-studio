@@ -190,3 +190,49 @@ describe('SessionPool GPU memory', () => {
     expect(providers).toEqual(['cpu'])
   })
 })
+
+describe('SessionPool idle release', () => {
+  function setup() {
+    let now = 0
+    const sessions: { release: ReturnType<typeof vi.fn> }[] = []
+    const create = vi.fn(async () => {
+      const session = { ...fakeSession(), release: vi.fn(async () => undefined) }
+      sessions.push(session)
+      return session as unknown as InferenceSession
+    })
+    const pool = new SessionPool(create, vi.fn(), undefined, { idleMs: 1000, now: () => now })
+    pool.configure(modelsDir(), 'off')
+    return { pool, create, sessions, advance: (ms: number) => (now += ms) }
+  }
+
+  it('unloads a model unused for the idle time, and reloads it on the next use', async () => {
+    const { pool, create, sessions, advance } = setup()
+    await pool.run('ocr', 'det.onnx', async () => 1)
+    advance(999)
+    await pool.releaseIdle()
+    expect(sessions[0]?.release).not.toHaveBeenCalled()
+    advance(1)
+    await pool.releaseIdle()
+    expect(sessions[0]?.release).toHaveBeenCalledTimes(1)
+    await pool.run('ocr', 'det.onnx', async () => 1)
+    expect(create).toHaveBeenCalledTimes(2)
+    await pool.releaseAll()
+  })
+
+  it('never unloads a model while it is running', async () => {
+    const { pool, sessions, advance } = setup()
+    let finish: () => void = () => undefined
+    const running = pool.run('ocr', 'det.onnx', () => new Promise<void>((resolve) => (finish = resolve)))
+    await vi.waitFor(() => expect(sessions).toHaveLength(1))
+    advance(5000)
+    await pool.releaseIdle()
+    expect(sessions[0]?.release).not.toHaveBeenCalled()
+    finish()
+    await running
+    // Its idle time counts from when the run ended.
+    advance(500)
+    await pool.releaseIdle()
+    expect(sessions[0]?.release).not.toHaveBeenCalled()
+    await pool.releaseAll()
+  })
+})
