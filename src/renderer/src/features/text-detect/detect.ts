@@ -16,6 +16,7 @@ import { adjustmentsOf } from '../adjust/adjust-ops'
 import { useToolStore } from '../tools/tool-store'
 import { looksHandwritten } from './classify'
 import { liftedLayers } from './lift'
+import { overlapShare } from './pdf-runs'
 import { nativeLines, nativeTextLayer } from './pdf-text'
 import { getSnapshot, resetDetect, setSnapshot, useDetectStore, type DetectedLine } from './detect-store'
 
@@ -37,18 +38,18 @@ export async function detectText(): Promise<void> {
     useDetectStore.setState({ status: 'detecting', progress: 0, message: null })
     abort = new AbortController()
     const signal = abort.signal
-    // A PDF page states its own text: no recognition (or recognition model) needed. Scans use OCR.
+    // A PDF page states its own text: exact, no recognition needed. Recognition still reads text
+    // inside its pictures (screenshots, photos); scans have no text and are recognized whole.
     const native = target.kind === 'page' ? await nativeLines(state.doc, page, snap) : null
     if (signal.aborted) return
-    if (native) {
+    const showNative = () =>
       useDetectStore.setState({
         status: 'ready',
-        lines: native,
+        lines: native?.lines ?? [],
         provider: null,
-        message: native.length ? null : 'All text on this page has been edited already.'
+        message: native?.lines.length ? null : 'All text on this page has been edited already.'
       })
-      return
-    }
+    if (native && !native.hasImages) return showNative()
     const ready = await ensureModel('ocr', 'Detecting text', (progress) =>
       useDetectStore.setState({
         status: 'preparing',
@@ -56,7 +57,7 @@ export async function detectText(): Promise<void> {
         message: 'Downloading the text detection model…'
       })
     )
-    if (!ready) return resetDetect()
+    if (!ready) return native ? showNative() : resetDetect()
     if (signal.aborted) return
     useDetectStore.setState({ status: 'detecting', progress: 0, message: null })
     const { image } = snap
@@ -65,20 +66,31 @@ export async function detectText(): Promise<void> {
       { width: image.width, height: image.height, pixels: new Uint8Array(image.data.buffer.slice(0)) },
       { signal, onProgress: (progress) => useDetectStore.setState({ progress }) }
     )
-    const detected: DetectedLine[] = result.lines.map((line) => ({
-      ...line,
-      id: crypto.randomUUID(),
-      corners: rectCorners(line.rect).map(snap.toPage),
-      handwriting: false
-    }))
+    const detected: DetectedLine[] = result.lines
+      .map((line) => ({
+        ...line,
+        id: crypto.randomUUID(),
+        corners: rectCorners(line.rect).map(snap.toPage),
+        handwriting: false
+      }))
+      // Text the PDF states itself is not recognized a second time.
+      .filter(
+        (line) =>
+          !native?.lines.some(
+            (own) => overlapShare(line.rect, own.rect) > 0.3 || overlapShare(own.rect, line.rect) > 0.3
+          )
+      )
     // Font matching tells printed text from handwriting, so finish it before showing results.
     useDetectStore.setState({ message: 'Analyzing fonts…', progress: 1 })
     const fonts = await Promise.all(detected.map(matchFor))
     if (signal.aborted) return
-    const lines = detected.map((line, i) => ({
-      ...line,
-      handwriting: looksHandwritten(line.confidence, fonts[i] ?? null)
-    }))
+    const lines = [
+      ...(native?.lines ?? []),
+      ...detected.map((line, i) => ({
+        ...line,
+        handwriting: looksHandwritten(line.confidence, fonts[i] ?? null)
+      }))
+    ]
     useDetectStore.setState({
       status: 'ready',
       lines,

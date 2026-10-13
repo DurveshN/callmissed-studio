@@ -61,17 +61,18 @@ function lineMask(source: OffscreenCanvas, rect: RotatedRect, background: string
 }
 
 /**
- * The page's own text as detected lines (exact words, font, size and baseline from the PDF), or
- * null when the page is not a PDF page or has no text (a scan: use OCR). Lines under a patch were
- * already edited and are left out.
+ * The page's own text as detected lines (exact words, font, size and baseline from the PDF), and
+ * whether the page also draws pictures (whose text only recognition can read). Null when the page
+ * is not a PDF page or has no text (a scan: use OCR). Lines under a patch were already edited and
+ * are left out.
  */
 export async function nativeLines(
   doc: StudioDocument,
   page: Page,
   snap: RasterSnapshot
-): Promise<DetectedLine[] | null> {
+): Promise<{ lines: DetectedLine[]; hasImages: boolean } | null> {
   if (page.background.kind !== 'pdf') return null
-  const { runs, fonts } = await pdfTextRuns(doc.id, doc.source.assetId, page.background.pageIndex)
+  const { runs, fonts, hasImages } = await pdfTextRuns(doc.id, doc.source.assetId, page.background.pageIndex)
   const lines = groupRuns(runs)
   if (lines.length === 0) return null
   const patched = (rect: RotatedRect) =>
@@ -79,7 +80,7 @@ export async function nativeLines(
       (p) => rect.cx >= p.x && rect.cx <= p.x + p.width && rect.cy >= p.y && rect.cy <= p.y + p.height
     )
   let source: OffscreenCanvas | null = null
-  return lines.flatMap((line): DetectedLine[] => {
+  const detected = lines.flatMap((line): DetectedLine[] => {
     const rect = runBox(line)
     if (patched(rect)) return []
     const { color, background, inked } = inkColor(snap.image, rect)
@@ -123,6 +124,7 @@ export async function nativeLines(
       }
     ]
   })
+  return { lines: detected, hasImages }
 }
 
 /** A text layer whose first baseline lies exactly on the PDF line's baseline. */

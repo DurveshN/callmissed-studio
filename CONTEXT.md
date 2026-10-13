@@ -120,6 +120,7 @@ CallMissed Studio — open-source (MIT) Windows Electron app: local OCR/segmenta
   - pdf.js runs (with `fontExtraProperties`) are grouped into lines per font and baseline.
   - Font names are parsed into a catalog family, weight and italic. A family outside the catalog that is installed (`fonts/installed.ts`; aliases like Helvetica→Arial don't count) is used as is; anything else is matched from the rendered pixels.
   - Lines without ink are skipped, and so are lines under existing patches.
+  - If the page also draws pictures (pdf.js image operators), OCR runs too, for text inside them. Recognized lines that overlap the page's own text (>30% either way) are dropped.
   - Text layers get `origin: 'pdf-native'`, with Konva's first baseline placed on the PDF baseline.
 - e2e helpers delete their temp profiles on exit: each profile holds model copies, and 12 GB of leftovers once filled the disk.
 - GPU mode changes are acknowledged by the worker (`configure` + `ack`), `settings:update` awaits it, and `runJob` awaits any in-flight settings save.

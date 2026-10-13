@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getDocument, GlobalWorkerOptions, Util, type PDFDocumentProxy } from 'pdfjs-dist'
+import { getDocument, GlobalWorkerOptions, OPS, Util, type PDFDocumentProxy } from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { PDF_RENDER_SCALE } from '@shared/document/model'
 import { call } from '../../lib/ipc'
@@ -122,18 +122,37 @@ export interface PdfTextRun {
   descent: number
 }
 
-/** The page's text runs and, per font, its PDF name and kind (fonts are resolved by loading the page). */
+/** Operators that draw pictures (photos, screenshots, scans), whose text only recognition can read. */
+const IMAGE_OPS = new Set<number>([
+  OPS.paintImageXObject,
+  OPS.paintInlineImageXObject,
+  OPS.paintInlineImageXObjectGroup,
+  OPS.paintImageXObjectRepeat,
+  OPS.paintImageMaskXObject,
+  OPS.paintImageMaskXObjectGroup,
+  OPS.paintImageMaskXObjectRepeat
+])
+
+/**
+ * The page's text runs and, per font, its PDF name and kind (fonts are resolved by loading the page),
+ * and whether the page draws pictures.
+ */
 export async function pdfTextRuns(
   docId: string,
   assetId: string,
   pageIndex: number,
   pixelsPerPoint = PDF_RENDER_SCALE
-): Promise<{ runs: PdfTextRun[]; fonts: Map<string, { name: string; serif: boolean; mono: boolean }> }> {
+): Promise<{
+  runs: PdfTextRun[]
+  fonts: Map<string, { name: string; serif: boolean; mono: boolean }>
+  hasImages: boolean
+}> {
   const page = await (await sourcePdf(docId, assetId)).getPage(pageIndex + 1)
   const viewport = page.getViewport({ scale: pixelsPerPoint })
   const content = await page.getTextContent()
   // Font objects (with their names) are available once the page's operators are loaded.
-  await page.getOperatorList()
+  const ops = await page.getOperatorList()
+  const hasImages = ops.fnArray.some((fn) => IMAGE_OPS.has(fn))
   const fonts = new Map<string, { name: string; serif: boolean; mono: boolean }>()
   const runs: PdfTextRun[] = []
   for (const item of content.items) {
@@ -165,5 +184,5 @@ export async function pdfTextRuns(
       descent: style?.descent ?? -0.2
     })
   }
-  return { runs, fonts }
+  return { runs, fonts, hasImages }
 }

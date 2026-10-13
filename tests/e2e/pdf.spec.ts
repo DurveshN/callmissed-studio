@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
 import fontkit from '@cantoo/fontkit'
-import { PDFDocument, TextRenderingMode } from '@cantoo/pdf-lib'
+import { PDFDocument, StandardFonts, TextRenderingMode } from '@cantoo/pdf-lib'
 import { strFromU8, unzipSync } from 'fflate'
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import { closeApp, launchApp, makePdf, openViaMain, seedModels, stubSaveDialog, tempDir } from './helpers'
@@ -208,4 +208,41 @@ test('shows multi-page documents with their page list and a page navigator', asy
   await expect(nav.getByRole('button', { name: /Next page/ })).toBeDisabled()
   await window.keyboard.press('PageUp')
   await expect(nav).toContainText('Page 2 of 3')
+})
+
+test('finds text inside pictures on a PDF page as well as the page’s own text', async () => {
+  await window.getByRole('button', { name: 'Close document' }).click()
+  const doc = await PDFDocument.create()
+  const page = doc.addPage([700, 520])
+  page.drawText('Quarterly results', {
+    x: 40,
+    y: 470,
+    size: 26,
+    font: await doc.embedFont(StandardFonts.HelveticaBold)
+  })
+  // A picture with text in it (the OCR poster fixture), as slides embed screenshots.
+  const poster = await doc.embedPng(readFileSync(resolve('tests/fixtures/ocr-poster.png')))
+  page.drawImage(poster, { x: 40, y: 20, width: 600, height: 420 })
+  const source = join(dir, 'slides.pdf')
+  writeFileSync(source, await doc.save())
+  await openViaMain(app, source)
+  await expect(window.getByTestId('doc-name')).toHaveText('slides')
+
+  await window.keyboard.press('d')
+  const bar = window.getByTestId('detect-bar')
+  await expect(bar).toHaveAttribute('data-status', 'ready', { timeout: 120_000 })
+  await bar.getByRole('button', { name: 'Convert all' }).click()
+  await expect(bar).toBeHidden({ timeout: 120_000 })
+  const out = join(dir, 'slides.cmsp')
+  await stubSaveDialog(app, out)
+  await window.keyboard.press('Control+Shift+s')
+  await expect.poll(() => readFileSafe(out)).not.toBeNull()
+  const saved = JSON.parse(strFromU8(unzipSync(readFileSync(out))['document.json'] as Uint8Array)) as {
+    pages: { layers: { text?: string; origin?: string }[] }[]
+  }
+  const layers = saved.pages[0]?.layers ?? []
+  // The page's own line once (exact, not recognized again), and the picture's lines recognized.
+  expect(layers.filter((l) => l.text === 'Quarterly results').map((l) => l.origin)).toEqual(['pdf-native'])
+  expect(layers.find((l) => l.text === 'SUMMER SALE 50% OFF')?.origin).toBe('ocr')
+  expect(layers.find((l) => l.text === 'CallMissed Studio')?.origin).toBe('ocr')
 })

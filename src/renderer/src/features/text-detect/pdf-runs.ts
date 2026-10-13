@@ -168,3 +168,22 @@ export function inkColor(
     inked: far.length > 0
   }
 }
+
+/** Share of `a`'s bounding box covered by `b`'s (0..1). */
+export function overlapShare(a: RotatedRect, b: RotatedRect): number {
+  const box = (r: RotatedRect) => {
+    const c = rectCorners(r)
+    return {
+      x0: Math.min(...c.map((p) => p.x)),
+      y0: Math.min(...c.map((p) => p.y)),
+      x1: Math.max(...c.map((p) => p.x)),
+      y1: Math.max(...c.map((p) => p.y))
+    }
+  }
+  const A = box(a)
+  const B = box(b)
+  const w = Math.max(0, Math.min(A.x1, B.x1) - Math.max(A.x0, B.x0))
+  const h = Math.max(0, Math.min(A.y1, B.y1) - Math.max(A.y0, B.y0))
+  const area = (A.x1 - A.x0) * (A.y1 - A.y0)
+  return area > 0 ? (w * h) / area : 0
+}

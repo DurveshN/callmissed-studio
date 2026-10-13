@@ -93,3 +93,12 @@ describe('ink colour of a PDF line', () => {
     expect(inkColor({ width: W, height: H, data: blank }, box).inked).toBe(false)
   })
 })
+
+describe('overlap of detected lines', () => {
+  it('tells recognized text that repeats the PDF’s own from text inside pictures', async () => {
+    const { overlapShare } = await import('../../src/renderer/src/features/text-detect/pdf-runs')
+    const pdfLine = { cx: 100, cy: 50, width: 120, height: 20, angle: 0 }
+    expect(overlapShare({ cx: 102, cy: 51, width: 110, height: 18, angle: 0 }, pdfLine)).toBeGreaterThan(0.9)
+    expect(overlapShare({ cx: 100, cy: 200, width: 120, height: 20, angle: 0 }, pdfLine)).toBe(0)
+  })
+})
