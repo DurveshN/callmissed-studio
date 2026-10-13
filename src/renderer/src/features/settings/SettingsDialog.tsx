@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { ModelRow } from '../models/ModelRow'
 import { modelActions, useModelsStore } from '../models/models-store'
 import ui from '../../ui/ui.module.css'
+import { CallMissedSection } from './CallMissedSection'
 import styles from './SettingsDialog.module.css'
 
 export function SettingsDialog({ onClose }: { onClose(): void }) {
@@ -35,6 +36,8 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
             ))}
           </ul>
         </section>
+
+        <CallMissedSection />
 
         <section className={styles.section}>
           <h3 className={styles.heading}>Performance</h3>

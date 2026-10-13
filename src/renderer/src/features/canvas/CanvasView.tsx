@@ -20,6 +20,7 @@ import { SelectOverlay } from '../magic-select/SelectOverlay'
 import { TaskBar } from '../tasks/TaskBar'
 import { CropBar } from '../page-geometry/CropBar'
 import { PageNavigator } from '../pages/PageNavigator'
+import { CompareBar, CompareOverlay } from '../ai/CompareOverlay'
 import { CropOverlay } from '../page-geometry/CropOverlay'
 import { LAYER_NAME, LayerNode } from './LayerNode'
 import { PageBackground } from './PageBackground'
@@ -273,8 +274,8 @@ export function CanvasView() {
     }
     if (e.evt.button !== 0) return
 
-    // The crop box and its handles handle their own dragging.
-    if (tool === 'crop') return
+    // The crop box and the compare divider handle their own dragging.
+    if (tool === 'crop' || e.target.name() === 'compare-handle') return
 
     if (tool === 'select') {
       if (e.target.findAncestor('Transformer', true)) return
@@ -501,6 +502,7 @@ export function CanvasView() {
           <DetectOverlay pageId={page.id} px={px} />
           <SelectOverlay pageId={page.id} px={px} />
           {tool === 'crop' && <CropOverlay px={px} />}
+          <CompareOverlay px={px} />
           {stroke && (
             <Line
               points={stroke.points.flatMap((p) => [p.x, p.y])}
@@ -533,6 +535,7 @@ export function CanvasView() {
       <TaskBar />
       <CropBar />
       <PageNavigator />
+      <CompareBar />
     </div>
   )
 }

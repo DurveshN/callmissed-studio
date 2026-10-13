@@ -16,13 +16,22 @@ export function renderActivePage(scale: number): HTMLCanvasElement {
   const stage = group.getStage()
   if (!stage) throw new Error('Canvas is not mounted')
   const stageScale = stage.scaleX()
-  return group.toCanvas({
+  // Konva sizes its canvas as (client width × pixel ratio) rounded down, which can lose a pixel at
+  // some zoom levels: render one client pixel more, then copy out exactly the page's size.
+  const rendered = group.toCanvas({
     x: stage.x(),
     y: stage.y(),
-    width: page.width * stageScale,
-    height: page.height * stageScale,
+    width: page.width * stageScale + 1,
+    height: page.height * stageScale + 1,
     pixelRatio: scale / stageScale
   })
+  const width = Math.max(1, Math.round(page.width * scale))
+  const height = Math.max(1, Math.round(page.height * scale))
+  const exact = document.createElement('canvas')
+  exact.width = width
+  exact.height = height
+  exact.getContext('2d')?.drawImage(rendered, 0, 0, width, height, 0, 0, width, height)
+  return exact
 }
 
 function toBlob(canvas: HTMLCanvasElement, format: ExportFormat, quality: number): Promise<Blob> {

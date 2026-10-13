@@ -8,6 +8,7 @@ import { applySelection, clearSelection } from '../magic-select/magic-select'
 import { useSelectStore } from '../magic-select/select-store'
 import { applyCrop } from '../page-geometry/crop'
 import { stepPage } from '../pages/page-ops'
+import { closeCompare, useCompare } from '../ai/compare'
 import { TOOL_SHORTCUTS, useToolStore } from '../tools/tool-store'
 
 function isTyping(target: EventTarget | null): boolean {
@@ -67,7 +68,8 @@ export function useShortcuts(onExport: () => void): void {
       }
       if (key === 'escape') {
         return run(() => {
-          if (objectSelected) clearSelection()
+          if (useCompare.getState().generationId) closeCompare()
+          else if (objectSelected) clearSelection()
           else if (useDetectStore.getState().status !== 'idle') cancelDetect()
           else if (useToolStore.getState().tool !== 'select') useToolStore.getState().setTool('select')
           else select([])

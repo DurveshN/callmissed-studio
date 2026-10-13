@@ -1,0 +1,55 @@
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.icon {
+  flex: none;
+  color: var(--accent);
+}
+
+.prompt {
+  flex: 1;
+  min-width: 160px;
+  height: 36px;
+  max-height: 96px;
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  resize: none;
+  overflow-y: auto;
+}
+
+.choice {
+  flex: none;
+  width: auto;
+}
+
+.prompt:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.cost {
+  flex: none;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

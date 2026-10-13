@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react'
+import { PromptBar } from '../ai/PromptBar'
 import { CanvasView } from '../canvas/CanvasView'
 import { ExportDialog } from '../export/ExportDialog'
 import { RightPanel } from './RightPanel'
@@ -15,7 +16,10 @@ export function EditorScreen() {
     <div className={styles.editor}>
       <TopBar onExport={openExport} />
       <main className={styles.workspace}>
-        <CanvasView />
+        <div className={styles.canvasArea}>
+          <CanvasView />
+        </div>
+        <PromptBar />
       </main>
       <RightPanel />
       {exporting && <ExportDialog onClose={() => setExporting(false)} />}

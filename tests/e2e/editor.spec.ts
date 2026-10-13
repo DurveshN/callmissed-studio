@@ -61,9 +61,12 @@ test('adds text with the text tool and edits it in place', async () => {
 test('draws a rectangle, then undo and redo it', async () => {
   const box = await canvasBox(window)
   await window.keyboard.press('r')
-  await window.mouse.move(box.x + 100, box.y + 100)
+  // Around the canvas centre, which is always on the page (whatever the window and panel sizes).
+  const cx = box.x + box.width / 2
+  const cy = box.y + box.height / 2
+  await window.mouse.move(cx - 60, cy - 40)
   await window.mouse.down()
-  await window.mouse.move(box.x + 220, box.y + 180, { steps: 5 })
+  await window.mouse.move(cx + 60, cy + 40, { steps: 5 })
   await window.mouse.up()
   await expect(await layerRows(window)).toHaveCount(2)
 
@@ -85,9 +88,10 @@ test('arranges layers from the layer menu, the canvas menu and the inspector', a
   await expect(menu).toBeHidden()
   await expect(rows.first()).toContainText('Hello Studio')
 
-  // Right-click the rectangle on the canvas (drawn from 100,100 to 220,180).
+  // Right-click the rectangle on the canvas: it spans ±60 px around the canvas centre, and the text
+  // (placed at the centre, now on top) starts there, so its left part is the rectangle alone.
   const box = await canvasBox(window)
-  await window.mouse.click(box.x + 160, box.y + 140, { button: 'right' })
+  await window.mouse.click(box.x + box.width / 2 - 40, box.y + box.height / 2, { button: 'right' })
   await window.getByRole('menuitem', { name: /Bring forward/ }).click()
   await expect(rows.first()).toContainText('Rectangle')
 
