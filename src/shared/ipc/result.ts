@@ -1,4 +1,11 @@
-export type ErrorCode = 'INVALID_INPUT' | 'UNTRUSTED_SENDER' | 'UNKNOWN_CHANNEL' | 'INTERNAL'
+export type ErrorCode =
+  | 'INVALID_INPUT'
+  | 'UNTRUSTED_SENDER'
+  | 'UNKNOWN_CHANNEL'
+  | 'INTERNAL'
+  /** A CallMissed API request failed; the message says why and what to do. */
+  | 'API'
+  | 'CANCELLED'
 
 export interface IpcError {
   code: ErrorCode

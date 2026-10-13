@@ -26,7 +26,17 @@ export const CHANNELS = [
   'models:cancel',
   'models:remove',
   'settings:get',
-  'settings:update'
+  'settings:update',
+  'ai:key-status',
+  'ai:set-key',
+  'ai:remove-key',
+  'ai:test-key',
+  'ai:models',
+  'ai:generate',
+  'ai:cancel',
+  'ai:usage',
+  'ai:history',
+  'ai:import'
 ] as const
 
 export type Channel = (typeof CHANNELS)[number]

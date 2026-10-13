@@ -19,10 +19,10 @@ afterEach(() => {
 
 describe('LibraryDb', () => {
   it('migrates to the latest schema and is idempotent on reopen', () => {
-    expect(db.schemaVersion).toBe(1)
+    expect(db.schemaVersion).toBe(2)
     db.close()
     db = new LibraryDb(join(dir, 'library.db'))
-    expect(db.schemaVersion).toBe(1)
+    expect(db.schemaVersion).toBe(2)
   })
 
   it('orders recent projects newest first and upserts by path', () => {

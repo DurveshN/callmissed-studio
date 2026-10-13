@@ -8,8 +8,42 @@ const MIGRATIONS = [
      thumbnail BLOB,
      last_opened_at TEXT NOT NULL
    );
-   CREATE INDEX projects_last_opened ON projects(last_opened_at DESC);`
+   CREATE INDEX projects_last_opened ON projects(last_opened_at DESC);`,
+  `CREATE TABLE api_calls (
+     id INTEGER PRIMARY KEY,
+     endpoint TEXT NOT NULL,
+     model TEXT,
+     http_status INTEGER,
+     error_code TEXT,
+     images INTEGER NOT NULL DEFAULT 0,
+     credits REAL NOT NULL DEFAULT 0,
+     latency_ms INTEGER NOT NULL,
+     created_at TEXT NOT NULL
+   );
+   CREATE INDEX api_calls_created ON api_calls(created_at DESC);`
 ]
+
+/** One request to the CallMissed API, as logged for the Usage view. */
+export interface ApiCall {
+  endpoint: string
+  model: string | null
+  /** Null when no response arrived (network failure, timeout, cancel). */
+  httpStatus: number | null
+  errorCode: string | null
+  images: number
+  credits: number
+  latencyMs: number
+  createdAt: string
+}
+
+export interface UsageSummary {
+  generations: number
+  failures: number
+  images: number
+  credits: number
+  byModel: { model: string; images: number; credits: number }[]
+  recent: ApiCall[]
+}
 
 export interface RecentRow {
   path: string
@@ -20,7 +54,7 @@ export interface RecentRow {
 
 const RECENT_LIMIT = 20
 
-/** Local app library (recent projects; generations and API usage are added in later milestones). */
+/** Local app library: recent projects and the CallMissed API calls this app made (usage). */
 export class LibraryDb {
   private readonly db: DatabaseSync
 
@@ -42,6 +76,74 @@ export class LibraryDb {
         this.db.exec('ROLLBACK')
         throw error
       }
+    }
+  }
+
+  logApiCall(call: ApiCall): void {
+    this.db
+      .prepare(
+        `INSERT INTO api_calls (endpoint, model, http_status, error_code, images, credits, latency_ms, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        call.endpoint,
+        call.model,
+        call.httpStatus,
+        call.errorCode,
+        call.images,
+        call.credits,
+        call.latencyMs,
+        call.createdAt
+      )
+  }
+
+  /** Generation totals (all time, from this app) and the latest calls. */
+  usage(recentLimit = 50): UsageSummary {
+    const totals = this.db
+      .prepare(
+        `SELECT
+           COUNT(*) FILTER (WHERE error_code IS NULL) AS generations,
+           COUNT(*) FILTER (WHERE error_code IS NOT NULL) AS failures,
+           COALESCE(SUM(images), 0) AS images,
+           COALESCE(SUM(credits), 0) AS credits
+         FROM api_calls WHERE endpoint = 'images/generations'`
+      )
+      .get() as { generations: number; failures: number; images: number; credits: number }
+    const byModel = this.db
+      .prepare(
+        `SELECT model, SUM(images) AS images, SUM(credits) AS credits FROM api_calls
+         WHERE endpoint = 'images/generations' AND error_code IS NULL
+         GROUP BY model ORDER BY credits DESC`
+      )
+      .all() as { model: string; images: number; credits: number }[]
+    const recent = this.db
+      .prepare(
+        `SELECT endpoint, model, http_status, error_code, images, credits, latency_ms, created_at
+         FROM api_calls ORDER BY created_at DESC, id DESC LIMIT ?`
+      )
+      .all(recentLimit) as {
+      endpoint: string
+      model: string | null
+      http_status: number | null
+      error_code: string | null
+      images: number
+      credits: number
+      latency_ms: number
+      created_at: string
+    }[]
+    return {
+      ...totals,
+      byModel,
+      recent: recent.map((r) => ({
+        endpoint: r.endpoint,
+        model: r.model,
+        httpStatus: r.http_status,
+        errorCode: r.error_code,
+        images: r.images,
+        credits: r.credits,
+        latencyMs: r.latency_ms,
+        createdAt: r.created_at
+      }))
     }
   }
 

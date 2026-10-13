@@ -95,6 +95,22 @@ export const AssetMeta = z.object({
   mime: z.enum(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/bmp', 'application/pdf'])
 })
 
+/** An AI result kept with the project (its image is a document asset). Not part of undo. */
+export const Generation = z.object({
+  id: Id,
+  assetId: Id,
+  prompt: z.string().max(4000),
+  model: z.string().max(100),
+  size: z.string().max(20),
+  revisedPrompt: z.string().max(10_000).nullable(),
+  credits: z.number().nonnegative(),
+  /** The page it was generated from. */
+  pageId: Id,
+  createdAt: z.iso.datetime(),
+  /** Generated here, or imported from the CallMissed account history. */
+  source: z.enum(['generated', 'imported'])
+})
+
 export const StudioDocument = z.object({
   id: Id,
   name: z.string().min(1).max(260),
@@ -105,6 +121,8 @@ export const StudioDocument = z.object({
   }),
   assets: z.record(Id, AssetMeta),
   pages: z.array(Page).min(1),
+  /** Newest last. Optional: projects from before AI generation have none. */
+  generations: z.array(Generation).optional(),
   createdAt: z.iso.datetime()
 })
 
@@ -116,6 +134,7 @@ export type ShapeLayer = z.infer<typeof ShapeLayer>
 export type Layer = z.infer<typeof Layer>
 export type Patch = z.infer<typeof Patch>
 export type Page = z.infer<typeof Page>
+export type Generation = z.infer<typeof Generation>
 export type PageBackground = z.infer<typeof PageBackground>
 export type AssetMime = z.infer<typeof AssetMeta>['mime']
 export type StudioDocument = z.infer<typeof StudioDocument>

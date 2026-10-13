@@ -93,4 +93,38 @@ describe('layer ordering', () => {
     ops.moveLayer(idOf('A copy'), 0)
     expect(layerNames()).toEqual(['A copy', 'A', 'D'])
   })
+
+  it('records AI results outside undo: undo and redo never remove them', () => {
+    const before = layerNames()
+    ops.addLayer(rect('New'))
+    const after = layerNames()
+    const pageId = store().doc?.pages[0]?.id ?? ''
+    const assetId = '00000000-0000-4000-8000-0000000000b1'
+    store().record((d) => {
+      d.assets[assetId] = { mime: 'image/png' }
+      d.generations = [
+        ...(d.generations ?? []),
+        {
+          id: '00000000-0000-4000-8000-0000000000b2',
+          assetId,
+          prompt: 'make it blue',
+          model: 'gpt-image-2',
+          size: '1024x1024',
+          revisedPrompt: null,
+          credits: 25,
+          pageId,
+          createdAt: new Date().toISOString(),
+          source: 'generated'
+        }
+      ]
+    })
+    expect(store().revision).not.toBe(store().savedRevision) // saved with the project
+    store().undo()
+    expect(layerNames()).toEqual(before)
+    expect(store().doc?.generations).toHaveLength(1)
+    expect(store().doc?.assets[assetId]).toBeDefined()
+    store().redo()
+    expect(layerNames()).toEqual(after)
+    expect(store().doc?.generations).toHaveLength(1)
+  })
 })

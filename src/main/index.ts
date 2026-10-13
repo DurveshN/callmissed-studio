@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { extname, join } from 'node:path'
-import { app, BrowserWindow, net } from 'electron'
+import { app, BrowserWindow, net, safeStorage } from 'electron'
 import { OPENABLE_EXTENSIONS } from '@shared/file-types'
 import type { AppEvent } from '@shared/ipc/channels'
 import type { EventPayload } from '@shared/ipc/contracts'
@@ -9,7 +9,10 @@ import { registerAppScheme, serveAppProtocol } from './app-protocol'
 import { applySecurityPolicies } from './security'
 import { registerAppHandlers } from './ipc/app-handlers'
 import { registerMlHandlers } from './ipc/ml-handlers'
+import { registerAiHandlers } from './ipc/ai-handlers'
 import { registerPdfHandlers } from './ipc/pdf-handlers'
+import { CallMissedClient } from './services/callmissed-client'
+import { SecretStore } from './services/secret-store'
 import { registerProjectHandlers } from './ipc/project-handlers'
 import { FontFiles } from './services/font-files'
 import { registerWindowHandlers } from './ipc/window-handlers'
@@ -26,6 +29,7 @@ import { createMainWindow, markRendererLoading, requestOpen, sendEvent, setDirty
 // Test-only overrides (isolated profile, local model manifest); never honoured in packaged builds.
 const testUserData = app.isPackaged ? undefined : process.env['STUDIO_USER_DATA']
 const testManifest = app.isPackaged ? undefined : process.env['STUDIO_MODEL_MANIFEST']
+const testCallMissed = app.isPackaged ? undefined : process.env['STUDIO_CALLMISSED_URL']
 if (testUserData) app.setPath('userData', testUserData)
 
 app.enableSandbox()
@@ -71,7 +75,8 @@ if (!app.requestSingleInstanceLock()) {
     await settings.load()
     settings.onChange((s) => broadcast('settings:changed', s))
 
-    library = new LibraryDb(join(userData, 'library.db'))
+    const db = new LibraryDb(join(userData, 'library.db'))
+    library = db
     projects = new ProjectService({
       workspaces: new WorkspaceStore(join(userData, 'workspaces')),
       library,
@@ -111,6 +116,18 @@ if (!app.requestSingleInstanceLock()) {
     applySecurityPolicies()
     registerAppHandlers()
     registerProjectHandlers(projects, library)
+    const secrets = new SecretStore(join(userData, 'secrets.bin'), safeStorage)
+    registerAiHandlers(
+      secrets,
+      new CallMissedClient({
+        fetch: (input, init) => net.fetch(input instanceof URL ? input.toString() : (input as string), init),
+        getKey: () => secrets.getKey(),
+        log: (call) => db.logApiCall(call),
+        ...(testCallMissed ? { baseUrl: testCallMissed } : {})
+      }),
+      projects,
+      db
+    )
     // Bundled fonts: next to the built renderer, or in its source folder when running from the dev server.
     registerPdfHandlers(
       projects,

@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { AssetMeta, Id, StudioDocument } from '../document/model'
 import { History } from '../document/history'
 import { PdfPlan } from '../pdf/plan'
+import { AI_MODEL_IDS, AI_SIZES, MAX_IMAGES, MAX_PROMPT } from '../ai/models'
 import { ModelId, ModelStatus } from '../ml/models'
 import { Settings, SettingsPatch } from '../settings'
 import type { AppEvent, Channel } from './channels'
@@ -16,6 +17,28 @@ interface Contract {
 /** Any Uint8Array (Buffer included) regardless of its backing buffer type. */
 const Bytes = z.custom<Uint8Array>((value) => value instanceof Uint8Array, { message: 'Expected bytes' })
 const MAX_PATH = 4096
+
+const KeyStatus = z.object({
+  configured: z.boolean(),
+  /** "cm_…abcd" (the key itself never leaves main). */
+  hint: z.string().nullable(),
+  secureStorage: z.boolean()
+})
+
+const ImageMime = z.enum(['image/png', 'image/jpeg'])
+/** CallMissed accepts reference images up to 10 MB decoded. */
+const MAX_REFERENCE_BYTES = 10 * 1024 * 1024
+
+const ApiCallRow = z.object({
+  endpoint: z.string(),
+  model: z.string().nullable(),
+  httpStatus: z.number().nullable(),
+  errorCode: z.string().nullable(),
+  images: z.number(),
+  credits: z.number(),
+  latencyMs: z.number(),
+  createdAt: z.string()
+})
 
 const OpenedProject = z.object({
   kind: z.literal('project'),
@@ -172,6 +195,66 @@ export const contracts = {
   'settings:get': {
     request: z.undefined(),
     response: Settings
+  },
+  'ai:key-status': { request: z.undefined(), response: KeyStatus },
+  'ai:set-key': { request: z.object({ key: z.string().max(300) }), response: KeyStatus },
+  'ai:remove-key': { request: z.undefined(), response: KeyStatus },
+  'ai:test-key': { request: z.undefined(), response: z.undefined() },
+  /** The image-to-image models, with availability from CallMissed's catalogue when reachable. */
+  'ai:models': {
+    request: z.undefined(),
+    response: z.array(z.object({ id: z.string(), available: z.boolean(), message: z.string().nullable() }))
+  },
+  /** Generates from the flattened page; the images are written into the document's workspace as assets. */
+  'ai:generate': {
+    request: z.object({
+      requestId: z.uuid(),
+      docId: Id,
+      model: z.enum(AI_MODEL_IDS),
+      prompt: z.string().trim().min(1).max(MAX_PROMPT),
+      n: z.number().int().min(1).max(MAX_IMAGES),
+      size: z.enum(AI_SIZES),
+      reference: Bytes.refine((b) => b.byteLength <= MAX_REFERENCE_BYTES, 'Reference image over 10 MB')
+    }),
+    response: z.object({
+      images: z.array(z.object({ assetId: Id, mime: ImageMime, revisedPrompt: z.string().nullable() })),
+      credits: z.number()
+    })
+  },
+  'ai:cancel': { request: z.object({ requestId: z.uuid() }), response: z.undefined() },
+  'ai:usage': {
+    request: z.undefined(),
+    response: z.object({
+      generations: z.number(),
+      failures: z.number(),
+      images: z.number(),
+      credits: z.number(),
+      byModel: z.array(z.object({ model: z.string(), images: z.number(), credits: z.number() })),
+      recent: z.array(ApiCallRow)
+    })
+  },
+  /** Images made with this key on CallMissed (from any app), newest first. */
+  'ai:history': {
+    request: z.object({ before: z.string().max(64).nullable() }),
+    response: z.object({
+      items: z.array(
+        z.object({
+          id: z.string(),
+          url: z.string(),
+          model: z.string(),
+          size: z.string(),
+          prompt: z.string(),
+          revisedPrompt: z.string().nullable(),
+          created: z.number()
+        })
+      ),
+      nextCursor: z.string().nullable()
+    })
+  },
+  /** Downloads an account-history image into the document's workspace. */
+  'ai:import': {
+    request: z.object({ docId: Id, url: z.url({ protocol: /^https$/ }) }),
+    response: z.object({ assetId: Id, mime: ImageMime })
   },
   'settings:update': {
     request: SettingsPatch,

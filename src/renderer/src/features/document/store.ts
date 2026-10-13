@@ -1,4 +1,4 @@
-import { applyPatches, enablePatches, produceWithPatches, type Draft, type Patch } from 'immer'
+import { applyPatches, enablePatches, produce, produceWithPatches, type Draft, type Patch } from 'immer'
 import { create } from 'zustand'
 import type { Layer, Page, StudioDocument } from '@shared/document/model'
 import { HISTORY_LIMIT, type History, type HistoryEntry, type JsonPatch } from '@shared/document/history'
@@ -31,6 +31,11 @@ interface DocumentState {
   unload(): void
   /** Applies an undoable change. */
   commit(label: string, recipe: (draft: Draft<StudioDocument>) => void, coalesceKey?: string): void
+  /**
+   * Changes the document outside undo (e.g. recording an AI result, which undo must never delete).
+   * Only for parts no undo step touches (generations and their assets), so recorded patches stay valid.
+   */
+  record(recipe: (draft: Draft<StudioDocument>) => void): void
   undo(): void
   redo(): void
   markSaved(projectPath: string): void
@@ -111,6 +116,12 @@ export const useDocumentStore = create<DocumentState>()((set, get) => ({
       revision: revision + 1,
       lastCommit: coalesceKey ? { key: coalesceKey, at: now } : null
     })
+  },
+
+  record: (recipe) => {
+    const { doc, revision } = get()
+    if (!doc) return
+    set({ doc: produce(doc, recipe), revision: revision + 1 })
   },
 
   undo: () => {
