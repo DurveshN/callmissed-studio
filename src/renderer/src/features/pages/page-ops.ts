@@ -24,3 +24,15 @@ export function deletePage(pageId: string): void {
   })
   if (activePageId === pageId && next) useDocumentStore.getState().setActivePage(next.id)
 }
+
+/** Shows the page `delta` pages before or after the current one (clamped to the document). */
+export function stepPage(delta: number): void {
+  const { doc, activePageId, setActivePage } = useDocumentStore.getState()
+  if (!doc) return
+  const index = Math.max(
+    0,
+    doc.pages.findIndex((p) => p.id === activePageId)
+  )
+  const next = doc.pages[Math.max(0, Math.min(doc.pages.length - 1, index + delta))]
+  if (next && next.id !== activePageId) setActivePage(next.id)
+}

@@ -70,6 +70,8 @@ test('exports an edited PDF: original pages keep their text, new text is real te
   if (!box) throw new Error('canvas not visible')
   await window.keyboard.press('t')
   await window.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+  // Type only once the new text box has focus (keys before that are editor shortcuts).
+  await expect(window.locator('textarea').first()).toBeFocused()
   await window.keyboard.type('Added in Studio')
   await window.keyboard.press('Escape')
 
@@ -189,4 +191,21 @@ test('uses the PDF’s own installed font and skips invisible text', async () =>
   expect(saved.pages[0]?.layers.map((l) => [l.text, l.fontFamily])).toEqual([
     ['Party at seven', 'Comic Sans MS']
   ])
+})
+
+test('shows multi-page documents with their page list and a page navigator', async () => {
+  await window.getByRole('button', { name: 'Close document' }).click()
+  const source = join(dir, 'chapters.pdf')
+  await openViaMain(app, source)
+  await expect(window.getByTestId('doc-name')).toHaveText('chapters')
+  await expect(window.getByRole('tab', { name: /Pages/ })).toHaveAttribute('aria-selected', 'true')
+  const nav = window.getByTestId('page-navigator')
+  await expect(nav).toContainText('Page 1 of 3')
+  await nav.getByRole('button', { name: /Next page/ }).click()
+  await expect(nav).toContainText('Page 2 of 3')
+  await window.keyboard.press('PageDown')
+  await expect(nav).toContainText('Page 3 of 3')
+  await expect(nav.getByRole('button', { name: /Next page/ })).toBeDisabled()
+  await window.keyboard.press('PageUp')
+  await expect(nav).toContainText('Page 2 of 3')
 })

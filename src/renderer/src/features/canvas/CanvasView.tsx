@@ -19,6 +19,7 @@ import { SelectBar } from '../magic-select/SelectBar'
 import { SelectOverlay } from '../magic-select/SelectOverlay'
 import { TaskBar } from '../tasks/TaskBar'
 import { CropBar } from '../page-geometry/CropBar'
+import { PageNavigator } from '../pages/PageNavigator'
 import { CropOverlay } from '../page-geometry/CropOverlay'
 import { LAYER_NAME, LayerNode } from './LayerNode'
 import { PageBackground } from './PageBackground'
@@ -531,6 +532,7 @@ export function CanvasView() {
       <EraserBar />
       <TaskBar />
       <CropBar />
+      <PageNavigator />
     </div>
   )
 }

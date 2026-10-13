@@ -9,7 +9,14 @@ type Tab = 'pages' | 'layers' | 'inspector'
 
 export function RightPanel() {
   const pageCount = useDocumentStore((s) => s.doc?.pages.length ?? 0)
-  const [tab, setTab] = useState<Tab>('inspector')
+  const docId = useDocumentStore((s) => s.docId)
+  // A document with several pages starts on its page list, so every page is in view.
+  const [tab, setTab] = useState<Tab>(() => (pageCount > 1 ? 'pages' : 'inspector'))
+  const [openedDoc, setOpenedDoc] = useState(docId)
+  if (docId !== openedDoc) {
+    setOpenedDoc(docId)
+    setTab(pageCount > 1 ? 'pages' : 'inspector')
+  }
   const tabs: { id: Tab; label: string }[] = [
     { id: 'inspector', label: 'Inspector' },
     { id: 'layers', label: 'Layers' },

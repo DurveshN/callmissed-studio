@@ -7,6 +7,7 @@ import { useDetectStore } from '../text-detect/detect-store'
 import { applySelection, clearSelection } from '../magic-select/magic-select'
 import { useSelectStore } from '../magic-select/select-store'
 import { applyCrop } from '../page-geometry/crop'
+import { stepPage } from '../pages/page-ops'
 import { TOOL_SHORTCUTS, useToolStore } from '../tools/tool-store'
 
 function isTyping(target: EventTarget | null): boolean {
@@ -73,6 +74,8 @@ export function useShortcuts(onExport: () => void): void {
         })
       }
       if (key === 'd') return run(() => void detectText())
+      if (key === 'pageup') return run(() => stepPage(-1))
+      if (key === 'pagedown') return run(() => stepPage(1))
       if (key === 'i') return run(() => void commands.insertImage())
       const step = e.shiftKey ? 10 : 1
       if (key === 'arrowleft') return run(() => nudgeLayers(selection, -step, 0))
