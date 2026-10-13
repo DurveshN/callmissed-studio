@@ -1,17 +1,19 @@
 import { useEffect, useState } from 'react'
-import { AI_MODELS } from '@shared/ai/models'
 import type { Response as IpcResponse } from '@shared/ipc/contracts'
 import { call } from '../../lib/ipc'
 import { attempt, notify } from '../../ui/notify'
 import ui from '../../ui/ui.module.css'
 import { selectActivePage, useDocumentStore } from '../document/store'
 import { useAiKey } from './ai-key'
+import { useModelName } from './ai-models'
 import styles from './AiPanel.module.css'
 
 type Usage = IpcResponse<'ai:usage'>
 type HistoryItem = IpcResponse<'ai:history'>['items'][number]
 
-const modelName = (id: string) => AI_MODELS.find((m) => m.id === id)?.name ?? id
+function ModelName({ id }: { id: string }) {
+  return <>{useModelName(id)}</>
+}
 
 /** Brings an image from the CallMissed account history into this project's results. */
 async function importItem(item: HistoryItem): Promise<void> {
@@ -94,7 +96,9 @@ export function UsageView() {
           <ul className={styles.rows}>
             {usage.byModel.map((m) => (
               <li key={m.model}>
-                <span>{modelName(m.model)}</span>
+                <span>
+                  <ModelName id={m.model} />
+                </span>
                 <span>
                   {m.images} images · {m.credits} credits
                 </span>
@@ -126,7 +130,7 @@ export function UsageView() {
                     {item.prompt || '(no prompt)'}
                     <br />
                     <span className={styles.meta}>
-                      {modelName(item.model)}
+                      <ModelName id={item.model} />
                       {item.created ? ` · ${new Date(item.created * 1000).toLocaleDateString()}` : ''}
                     </span>
                   </span>

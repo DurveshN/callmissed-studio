@@ -1,18 +1,18 @@
 import { create } from 'zustand'
-import { DEFAULT_AI_MODEL, sizeFor, type AiModelId } from '@shared/ai/models'
+import { PREFERRED_AI_MODEL, sizeFor } from '@shared/ai/models'
 import type { Generation } from '@shared/document/model'
 import { call } from '../../lib/ipc'
 import { notify } from '../../ui/notify'
 import { selectActivePage, useDocumentStore } from '../document/store'
 import { renderActivePage } from '../export/render-page'
+import { modelById } from './ai-models'
 
 /** Longest side of the page picture sent as the reference (GPT image models work at ~1–1.5K). */
 const REFERENCE_SIDE = 2048
-/** CallMissed accepts reference images up to 10 MB; stay safely below. */
-const REFERENCE_BYTES = 9.5 * 1024 * 1024
 
 interface GenerateState {
-  model: AiModelId
+  /** A model id from the list CallMissed gives for the key (see ai-models.ts). */
+  model: string
   n: number
   /** The running request (for Cancel), or null. */
   running: { requestId: string; startedAt: number } | null
@@ -21,14 +21,14 @@ interface GenerateState {
 }
 
 export const useGenerate = create<GenerateState>()(() => ({
-  model: DEFAULT_AI_MODEL,
+  model: PREFERRED_AI_MODEL,
   n: 1,
   running: null,
   latest: null
 }))
 
 /** The current page as displayed (picture, edits and layers), as PNG bytes within the API limits. */
-async function referencePng(): Promise<Uint8Array> {
+async function referencePng(maxBytes: number): Promise<Uint8Array> {
   const page = selectActivePage(useDocumentStore.getState())
   if (!page) throw new Error('No page')
   let scale = Math.min(1, REFERENCE_SIDE / Math.max(page.width, page.height))
@@ -37,7 +37,8 @@ async function referencePng(): Promise<Uint8Array> {
     const blob = await new Promise<Blob>((resolve, reject) =>
       canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Could not encode the page'))), 'image/png')
     )
-    if (blob.size <= REFERENCE_BYTES || scale < 0.05) return new Uint8Array(await blob.arrayBuffer())
+    // Stay safely below the model's limit for reference images.
+    if (blob.size <= maxBytes * 0.95 || scale < 0.05) return new Uint8Array(await blob.arrayBuffer())
     scale *= 0.75
   }
 }
@@ -54,7 +55,7 @@ export async function generate(prompt: string): Promise<void> {
   const requestId = crypto.randomUUID()
   useGenerate.setState({ running: { requestId, startedAt: Date.now() } })
   try {
-    const reference = await referencePng()
+    const reference = await referencePng(modelById(model)?.referenceMaxBytes ?? 7 * 1024 * 1024)
     const size = sizeFor(page.width, page.height)
     const result = await call('ai:generate', {
       requestId,

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { creditsFor } from '@shared/ai/models'
+import { PLAN_TIERS, type PlanTier } from '@shared/ai/models'
 import { StudioError } from '@shared/ipc/result'
 import type { ApiCall } from './library-db'
 
@@ -17,6 +17,8 @@ export interface GenerateRequest {
   size: string
   /** The flattened page (PNG), sent as the reference to edit. */
   reference: Uint8Array
+  /** Credits per generated image (from the model list), for the usage log. */
+  creditsPerImage: number
 }
 
 export interface GeneratedImage {
@@ -35,8 +37,15 @@ export interface HistoryItem {
   created: number
 }
 
+/** An image model from the public catalogue (GET /api/v1/models?category=image). */
 export interface CatalogueModel {
   id: string
+  name: string
+  description: string
+  ownedBy: string
+  /** pricing.price (USD per image). */
+  priceUsd: number
+  free: boolean
   status: string | null
   statusMessage: string | null
 }
@@ -195,20 +204,47 @@ export class CallMissedClient {
   /** The public image model catalogue (no key needed), for availability (e.g. maintenance). */
   async catalogue(): Promise<CatalogueModel[]> {
     return this.request('/api/v1/models?category=image', { method: 'GET', auth: false }, async (response) => {
+      const body = (await response.json()) as { data?: Record<string, unknown>[] }
+      const text = (v: unknown, fallback = '') => (typeof v === 'string' ? v : fallback)
+      return (body.data ?? []).flatMap((m): CatalogueModel[] => {
+        const pricing = m['pricing'] as { price?: unknown } | undefined
+        if (typeof m['id'] !== 'string') return []
+        return [
+          {
+            id: m['id'],
+            name: text(m['name'], m['id']),
+            description: text(m['description']),
+            ownedBy: text(m['owned_by']),
+            priceUsd: typeof pricing?.price === 'number' ? pricing.price : 0,
+            free: m['free'] === true,
+            status: typeof m['status'] === 'string' ? m['status'] : null,
+            statusMessage: typeof m['status_message'] === 'string' ? m['status_message'] : null
+          }
+        ]
+      })
+    })
+  }
+
+  /** Image models each plan may call (public: GET /api/v1/models/access → plans.<tier>.by_category.image). */
+  async planAccess(): Promise<Partial<Record<PlanTier, string[]>>> {
+    return this.request('/api/v1/models/access', { method: 'GET', auth: false }, async (response) => {
       const body = (await response.json()) as {
-        data?: { id?: unknown; status?: unknown; status_message?: unknown }[]
+        plans?: Record<string, { by_category?: { image?: unknown } }>
       }
-      return (body.data ?? []).flatMap((m) =>
-        typeof m.id === 'string'
-          ? [
-              {
-                id: m.id,
-                status: typeof m.status === 'string' ? m.status : null,
-                statusMessage: typeof m.status_message === 'string' ? m.status_message : null
-              }
-            ]
-          : []
-      )
+      const out: Partial<Record<PlanTier, string[]>> = {}
+      for (const tier of PLAN_TIERS) {
+        const image = body.plans?.[tier]?.by_category?.image
+        if (Array.isArray(image)) out[tier] = image.filter((id): id is string => typeof id === 'string')
+      }
+      return out
+    })
+  }
+
+  /** Model ids this key lists (GET /v1/models with the key). */
+  async keyModels(): Promise<Set<string>> {
+    return this.request('/v1/models', { method: 'GET' }, async (response) => {
+      const body = (await response.json()) as { data?: { id?: unknown }[] }
+      return new Set((body.data ?? []).flatMap((m) => (typeof m.id === 'string' ? [m.id] : [])))
     })
   }
 
@@ -248,7 +284,7 @@ export class CallMissedClient {
           ]
         })
       },
-      (images) => ({ images: images.length, credits: creditsFor(req.model, images.length) })
+      (images) => ({ images: images.length, credits: req.creditsPerImage * images.length })
     )
   }
 

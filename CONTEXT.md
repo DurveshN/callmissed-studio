@@ -24,7 +24,7 @@ CallMissed Studio — open-source (MIT) Windows Electron app: local OCR/segmenta
   - Detect Text reads a PDF page's own text: exact words, font, size and baseline. Invisible text is skipped. Scans use OCR.
   - Export → PDF writes all pages: untouched pages are copied, edits are drawn over them as real text with embedded fonts. Optional searchable scans. "Remove replaced text" is on by default.
   - Pages panel: drag to reorder; Move, Rotate and Delete from the menu.
-- **M6 AI built** (tag `m6-ai` once the owner has verified it with a real key):
+- **M6 AI done** (tag `m6-ai`; owner verified with a real key on 2026-10-13):
   - Settings → CallMissed: the key is stored encrypted.
   - Prompt bar under the canvas, with the credit cost always shown and Cancel.
   - AI tab: Results (Compare / Use as page / Add as layer / Export / Delete) and Usage (spent from this app, plus importing the account history).
@@ -128,6 +128,14 @@ CallMissed Studio — open-source (MIT) Windows Electron app: local OCR/segmenta
   - Text layers get `origin: 'pdf-native'`, with Konva's first baseline placed on the PDF baseline.
 - **AI generation (CallMissed)** (`main/services/callmissed-client.ts`, `secret-store.ts`, `ipc/ai-handlers.ts`; renderer `features/ai/`; models and prices in `shared/ai/models.ts`):
   - **Key:** encrypted with safeStorage (DPAPI) in `userData/secrets.bin`. Only main reads it; the UI sees `cm_…abcd`.
+  - **Models come from CallMissed, not from code** (`main/services/ai-catalog.ts`):
+    - the public catalogue gives names (slug names shown readably), descriptions, provider, USD price (→ credits at the documented ₹96/US$), free flag and maintenance status;
+    - plan access gives the lowest plan per model;
+    - the key's `/v1/models` gives what it may call.
+    - The list is cached in `userData/ai-models.json` with a sha256 fingerprint of the key (never the key), and rebuilt only when the key changes or on Refresh in the model picker.
+    - The one thing the API doesn't expose, which models accept reference images and their size limit, is the documented rule in `shared/ai/models.ts` (`referenceLimit`).
+    - Generation re-checks the model, its availability and its reference size limit against the list, and takes the price from it.
+  - **Prompt composer:** a card with a page thumbnail and an auto-growing prompt; a model picker (credits per image, plan badge, availability note, description, Refresh); an image-count control (1–4), the cost, a progress strip and Cancel.
   - **Requests:** made with `net.fetch` from main. Image-to-image only: the flattened page goes as `reference_images[0]` (PNG, long side ≤ 2048, under 10 MB). Size: `1536x1024` / `1024x1536` / `1024x1024`, whichever matches the page's shape.
   - **No automatic retries:** image calls are billed again on every attempt, and idempotency keys don't replay images.
   - **Logging:** every call goes into `library.db` `api_calls` (migration 2) for Usage. Credits come from the documented price list; no balance API exists.

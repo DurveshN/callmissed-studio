@@ -11,6 +11,7 @@ import { registerAppHandlers } from './ipc/app-handlers'
 import { registerMlHandlers } from './ipc/ml-handlers'
 import { registerAiHandlers } from './ipc/ai-handlers'
 import { registerPdfHandlers } from './ipc/pdf-handlers'
+import { AiCatalog } from './services/ai-catalog'
 import { CallMissedClient } from './services/callmissed-client'
 import { SecretStore } from './services/secret-store'
 import { registerProjectHandlers } from './ipc/project-handlers'
@@ -117,17 +118,14 @@ if (!app.requestSingleInstanceLock()) {
     registerAppHandlers()
     registerProjectHandlers(projects, library)
     const secrets = new SecretStore(join(userData, 'secrets.bin'), safeStorage)
-    registerAiHandlers(
-      secrets,
-      new CallMissedClient({
-        fetch: (input, init) => net.fetch(input instanceof URL ? input.toString() : (input as string), init),
-        getKey: () => secrets.getKey(),
-        log: (call) => db.logApiCall(call),
-        ...(testCallMissed ? { baseUrl: testCallMissed } : {})
-      }),
-      projects,
-      db
-    )
+    const callmissed = new CallMissedClient({
+      fetch: (input, init) => net.fetch(input instanceof URL ? input.toString() : (input as string), init),
+      getKey: () => secrets.getKey(),
+      log: (call) => db.logApiCall(call),
+      ...(testCallMissed ? { baseUrl: testCallMissed } : {})
+    })
+    const catalog = new AiCatalog(join(userData, 'ai-models.json'), callmissed, () => secrets.getKey())
+    registerAiHandlers(secrets, callmissed, catalog, projects, db)
     // Bundled fonts: next to the built renderer, or in its source folder when running from the dev server.
     registerPdfHandlers(
       projects,

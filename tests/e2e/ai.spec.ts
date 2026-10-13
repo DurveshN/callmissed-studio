@@ -29,18 +29,46 @@ function fakeCallMissed(): Promise<Server> {
         res.writeHead(status, { 'Content-Type': 'application/json' })
         res.end(JSON.stringify(payload))
       }
-      if (path.startsWith('/api/v1/models')) {
+      // Shapes as served by api.callmissed.com (public catalogue and plan access).
+      const model = (id: string, price: number, owner: string, extra = {}) => ({
+        id,
+        name: id,
+        description: `${id} from ${owner}`,
+        category: 'image',
+        owned_by: owner,
+        pricing: { price, unit: 'per_image', currency: 'USD' },
+        free: false,
+        min_plan: null,
+        ...extra
+      })
+      if (path === '/api/v1/models?category=image') {
         return send(200, {
           object: 'list',
+          total: 4,
           data: [
-            { id: 'gpt-image-2' },
-            { id: 'gpt-image-1.5', status: 'maintenance', status_message: 'Back soon' }
+            model('gpt-image-2', 0.2604, 'openai'),
+            model('gpt-image-1.5', 0.2604, 'openai', { status: 'maintenance', status_message: 'Back soon' }),
+            model('nano-banana-2', 0.06979, 'google'),
+            model('flux-2-klein-9b', 0.1042, 'black-forest-labs', { free: true })
           ]
+        })
+      }
+      if (path === '/api/v1/models/access') {
+        const starter = ['flux-2-klein-9b', 'gpt-image-2', 'gpt-image-1.5', 'nano-banana-2']
+        return send(200, {
+          plans: {
+            free: { models: [], by_category: { image: ['flux-2-klein-9b'] }, restriction: '' },
+            starter: { models: [], by_category: { image: starter }, restriction: '' },
+            pro: { models: [], by_category: { image: starter }, restriction: '' }
+          }
         })
       }
       if (req.headers.authorization !== `Bearer ${KEY}`)
         return send(401, { error: { message: 'Invalid API key' } })
-      if (path === '/v1/models') return send(200, { object: 'list', data: [] })
+      // This key can use the GPT models but not nano-banana-2.
+      if (path === '/v1/models') {
+        return send(200, { object: 'list', data: [{ id: 'gpt-image-2' }, { id: 'gpt-image-1.5' }] })
+      }
       if (path === '/v1/images/generations') {
         if (String(body?.['prompt']).includes('broke')) {
           return send(402, {
@@ -106,12 +134,25 @@ test('asks for a CallMissed key, stores it and checks it works', async () => {
 })
 
 test('shows the cost, sends the page as the reference and keeps the results', async () => {
-  await bar().getByLabel('Number of images').selectOption('2')
+  // The models come from CallMissed for this key: names, prices, plan and availability.
+  await bar().getByRole('button', { name: 'AI model' }).click()
+  const picker = window.getByTestId('model-picker')
+  const options = picker.getByTestId('model-option')
+  await expect(options).toHaveCount(3) // flux cannot edit pictures, so it is not offered
+  await expect(options.filter({ hasText: 'GPT Image 2' })).toContainText('25 credits / image')
+  await expect(options.filter({ hasText: 'GPT Image 2' })).toContainText('Starter+')
+  await expect(options.filter({ hasText: 'GPT Image 1.5' })).toBeDisabled() // under maintenance
+  await expect(options.filter({ hasText: 'GPT Image 1.5' })).toContainText('Back soon')
+  await expect(options.filter({ hasText: 'Nano Banana 2' })).toContainText('Not available for this API key')
+  await options.filter({ hasText: 'GPT Image 2' }).click()
+  await expect(picker).toBeHidden()
+
+  await bar().getByRole('radio', { name: '2 images' }).click()
   await expect(window.getByTestId('ai-cost')).toHaveText('50 credits')
-  // A model under maintenance in the catalogue is not offered.
-  await expect(bar().getByRole('option', { name: /GPT Image 1.5 \(unavailable\)/ })).toBeDisabled()
   await bar().getByLabel('AI prompt').fill('Make the background a sunset')
-  await bar().getByRole('button', { name: 'Generate' }).click()
+  await bar()
+    .getByRole('button', { name: /Generate/ })
+    .click()
   await expect(window.getByTestId('ai-result')).toHaveCount(2, { timeout: 30_000 })
   await expect(window.getByRole('tab', { name: 'AI (2)' })).toHaveAttribute('aria-selected', 'true')
 
@@ -153,7 +194,9 @@ test('adds a result as a layer', async () => {
 
 test('explains API failures in plain words', async () => {
   await bar().getByLabel('AI prompt').fill('This will be broke')
-  await bar().getByRole('button', { name: 'Generate' }).click()
+  await bar()
+    .getByRole('button', { name: /Generate/ })
+    .click()
   await expect(window.getByText(/Not enough CallMissed credits/)).toBeVisible({ timeout: 30_000 })
   await expect(window.getByTestId('ai-result')).toHaveCount(2)
 })

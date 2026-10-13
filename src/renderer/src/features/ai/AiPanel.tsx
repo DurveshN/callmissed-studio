@@ -1,17 +1,19 @@
 import { Columns2, Download, ImagePlus, Trash2, Wallpaper } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { AI_MODELS } from '@shared/ai/models'
 import type { Generation } from '@shared/document/model'
 import ui from '../../ui/ui.module.css'
 import { useAssetImage } from '../assets/asset-cache'
 import { useDocumentStore } from '../document/store'
+import { useModelName } from './ai-models'
 import { compare } from './compare'
 import { useGenerate } from './generate'
 import { addAsLayer, deleteResult, exportResult, applyAsPage } from './results'
 import { UsageView } from './UsageView'
 import styles from './AiPanel.module.css'
 
-const modelName = (id: string) => AI_MODELS.find((m) => m.id === id)?.name ?? id
+function ModelName({ id }: { id: string }) {
+  return <>{useModelName(id)}</>
+}
 
 function ago(iso: string): string {
   const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60_000)
@@ -52,7 +54,7 @@ function ResultCard({
         {generation.prompt}
       </p>
       <p className={styles.meta}>
-        {modelName(generation.model)} · {ago(generation.createdAt)}
+        <ModelName id={generation.model} /> · {ago(generation.createdAt)}
         {generation.credits ? ` · ${generation.credits} credits` : ''}
         {pageNumber ? ` · page ${pageNumber}` : ''}
       </p>

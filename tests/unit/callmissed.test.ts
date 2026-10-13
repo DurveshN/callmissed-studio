@@ -41,7 +41,8 @@ const generate = {
   prompt: 'make it blue',
   n: 2,
   size: '1536x1024',
-  reference: new Uint8Array(PNG)
+  reference: new Uint8Array(PNG),
+  creditsPerImage: 25
 }
 
 async function failure(promise: Promise<unknown>): Promise<StudioError> {
@@ -189,25 +190,76 @@ describe('CallMissed client', () => {
     )
   })
 
-  it('reads model availability from the public catalogue without a key', async () => {
-    const { api, requests } = client(
-      () =>
-        json(200, {
+  it('reads the public catalogue and plan access without a key, and the key’s own list with it', async () => {
+    const { api, requests } = client((url) => {
+      if (url.endsWith('/api/v1/models?category=image')) {
+        return json(200, {
           object: 'list',
           total: 2,
           data: [
-            { id: 'gpt-image-2' },
-            { id: 'flux-1.1-pro', status: 'maintenance', status_message: 'Back soon' }
+            {
+              id: 'gpt-image-2',
+              name: 'gpt-image-2',
+              description: 'OpenAI GPT Image 2',
+              category: 'image',
+              owned_by: 'openai',
+              pricing: { price: 0.2604, unit: 'per_image', currency: 'USD' },
+              free: false,
+              min_plan: null
+            },
+            {
+              id: 'flux-1.1-pro',
+              status: 'maintenance',
+              status_message: 'Back soon',
+              pricing: { price: 0.05208 }
+            }
           ]
-        }),
-      null
-    )
+        })
+      }
+      if (url.endsWith('/api/v1/models/access')) {
+        return json(200, {
+          plans: {
+            free: { models: [], by_category: { image: ['flux-2-klein-9b'] }, restriction: '' },
+            starter: {
+              models: [],
+              by_category: { image: ['flux-2-klein-9b', 'gpt-image-2'] },
+              restriction: ''
+            }
+          }
+        })
+      }
+      return json(200, { object: 'list', data: [{ id: 'gpt-image-2' }, { id: 'sarvam-105b' }] })
+    })
     expect(await api.catalogue()).toEqual([
-      { id: 'gpt-image-2', status: null, statusMessage: null },
-      { id: 'flux-1.1-pro', status: 'maintenance', statusMessage: 'Back soon' }
+      {
+        id: 'gpt-image-2',
+        name: 'gpt-image-2',
+        description: 'OpenAI GPT Image 2',
+        ownedBy: 'openai',
+        priceUsd: 0.2604,
+        free: false,
+        status: null,
+        statusMessage: null
+      },
+      {
+        id: 'flux-1.1-pro',
+        name: 'flux-1.1-pro',
+        description: '',
+        ownedBy: '',
+        priceUsd: 0.05208,
+        free: false,
+        status: 'maintenance',
+        statusMessage: 'Back soon'
+      }
     ])
-    expect(requests[0]?.url).toBe('https://api.callmissed.com/api/v1/models?category=image')
+    expect(await api.planAccess()).toEqual({
+      free: ['flux-2-klein-9b'],
+      starter: ['flux-2-klein-9b', 'gpt-image-2']
+    })
+    expect([...(await api.keyModels())]).toEqual(['gpt-image-2', 'sarvam-105b'])
     expect(header(requests[0]?.init, 'Authorization')).toBeUndefined()
+    expect(header(requests[1]?.init, 'Authorization')).toBeUndefined()
+    expect(header(requests[2]?.init, 'Authorization')).toBe('Bearer cm_testkey123')
   })
 
   it('downloads only https PNG or JPEG images', async () => {

@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { AssetMeta, Id, StudioDocument } from '../document/model'
 import { History } from '../document/history'
 import { PdfPlan } from '../pdf/plan'
-import { AI_MODEL_IDS, AI_SIZES, MAX_IMAGES, MAX_PROMPT } from '../ai/models'
+import { AI_SIZES, MAX_IMAGES, MAX_PROMPT, PLAN_TIERS } from '../ai/models'
 import { ModelId, ModelStatus } from '../ml/models'
 import { Settings, SettingsPatch } from '../settings'
 import type { AppEvent, Channel } from './channels'
@@ -200,17 +200,38 @@ export const contracts = {
   'ai:set-key': { request: z.object({ key: z.string().max(300) }), response: KeyStatus },
   'ai:remove-key': { request: z.undefined(), response: KeyStatus },
   'ai:test-key': { request: z.undefined(), response: z.undefined() },
-  /** The image-to-image models, with availability from CallMissed's catalogue when reachable. */
+  /**
+   * The image-to-image models for the current key, built from CallMissed's API and cached until the
+   * key changes; `refresh` fetches them again.
+   */
   'ai:models': {
-    request: z.undefined(),
-    response: z.array(z.object({ id: z.string(), available: z.boolean(), message: z.string().nullable() }))
+    request: z.object({ refresh: z.boolean() }),
+    response: z.object({
+      models: z.array(
+        z.object({
+          id: z.string(),
+          name: z.string(),
+          description: z.string(),
+          provider: z.string(),
+          priceUsd: z.number(),
+          credits: z.number(),
+          free: z.boolean(),
+          minPlan: z.enum(PLAN_TIERS).nullable(),
+          available: z.boolean(),
+          note: z.string().nullable(),
+          referenceMaxBytes: z.number()
+        })
+      ),
+      fetchedAt: z.string(),
+      keyChecked: z.boolean()
+    })
   },
   /** Generates from the flattened page; the images are written into the document's workspace as assets. */
   'ai:generate': {
     request: z.object({
       requestId: z.uuid(),
       docId: Id,
-      model: z.enum(AI_MODEL_IDS),
+      model: z.string().min(1).max(100),
       prompt: z.string().trim().min(1).max(MAX_PROMPT),
       n: z.number().int().min(1).max(MAX_IMAGES),
       size: z.enum(AI_SIZES),

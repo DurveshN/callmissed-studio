@@ -3,6 +3,7 @@ import { call } from '../../lib/ipc'
 import { notify } from '../../ui/notify'
 import ui from '../../ui/ui.module.css'
 import { refreshKeyStatus, removeKey, saveKey, useAiKey } from '../ai/ai-key'
+import { loadAiModels } from '../ai/ai-models'
 import styles from './SettingsDialog.module.css'
 
 type Check = { state: 'idle' | 'busy' } | { state: 'ok' } | { state: 'failed'; message: string }
@@ -33,6 +34,8 @@ export function CallMissedSection() {
       await saveKey(draft)
       setDraft('')
       await test()
+      // A new key may see different models (plan, key restrictions): fetch its list.
+      void loadAiModels()
     } catch (error) {
       notify.error(error, 'Could not save the key')
     }
@@ -57,7 +60,9 @@ export function CallMissedSection() {
             className={ui.button}
             onClick={() => {
               setCheck({ state: 'idle' })
-              void removeKey().catch((e: unknown) => notify.error(e, 'Could not remove the key'))
+              void removeKey()
+                .then(() => loadAiModels())
+                .catch((e: unknown) => notify.error(e, 'Could not remove the key'))
             }}
           >
             Remove
