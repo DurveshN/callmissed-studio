@@ -188,8 +188,10 @@ Source: `.research/08-callmissed-image-api.md`. Exact field names are re-verifie
 - Cost shown before sending (credits per image × n).
 - Timeout 180 s; Cancel via AbortController.
 - Errors mapped to messages: 400, 402 (insufficient credits / budget), 403 (permission / model), 404, 422, 429 (quota → no retry; rate/concurrency → honor `Retry-After`), 503 (safe retry).
-- Results saved to project `generations/` and DB; History tab actions: Compare (slider), Use as page (becomes new page background; prior state preserved in history), Add as layer, Export.
-- Usage tab: local `api_calls` + `generations` totals; Sync button imports `GET /v1/images/history`.
+- **Results:** saved with the project as document assets plus `doc.generations` records. The records are kept outside undo, so undo never deletes a paid result (replacing a separate `generations.json`).
+- **AI tab → Results:** Compare (draggable divider), Use as page (replaces the page's picture, edits and layers, which the result already shows; undoable), Add as layer, Export, Delete.
+- **AI tab → Usage:** local `api_calls` totals per model (credits from the documented price list; CallMissed has no balance API). The account history (`GET /v1/images/history`) is listed and can be imported into Results.
+- **No automatic retries:** image calls bill again on every attempt, and idempotency keys don't replay images.
 - Settings → CallMissed: set key, Test (calls `GET /v1/models`), Remove. Key only lives in main process.
 
 ## 7. ML pipelines and models

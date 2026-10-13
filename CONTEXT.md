@@ -24,7 +24,11 @@ CallMissed Studio — open-source (MIT) Windows Electron app: local OCR/segmenta
   - Detect Text reads a PDF page's own text: exact words, font, size and baseline. Invisible text is skipped. Scans use OCR.
   - Export → PDF writes all pages: untouched pages are copied, edits are drawn over them as real text with embedded fonts. Optional searchable scans. "Remove replaced text" is on by default.
   - Pages panel: drag to reorder; Move, Rotate and Delete from the menu.
-- Next: M6 AI generation panel (CallMissed image-to-image, history, usage).
+- **M6 AI built** (tag `m6-ai` once the owner has verified it with a real key):
+  - Settings → CallMissed: the key is stored encrypted.
+  - Prompt bar under the canvas, with the credit cost always shown and Cancel.
+  - AI tab: Results (Compare / Use as page / Add as layer / Export / Delete) and Usage (spent from this app, plus importing the account history).
+- Next: M7 release (packaging, signing, installer, GitHub release).
 
 ## Pinned toolchain (compatibility-constrained)
 
@@ -122,14 +126,23 @@ CallMissed Studio — open-source (MIT) Windows Electron app: local OCR/segmenta
   - Lines without ink are skipped, and so are lines under existing patches.
   - If the page also draws pictures (pdf.js image operators), OCR runs too, for text inside them. Recognized lines that overlap the page's own text (>30% either way) are dropped.
   - Text layers get `origin: 'pdf-native'`, with Konva's first baseline placed on the PDF baseline.
+- **AI generation (CallMissed)** (`main/services/callmissed-client.ts`, `secret-store.ts`, `ipc/ai-handlers.ts`; renderer `features/ai/`; models and prices in `shared/ai/models.ts`):
+  - **Key:** encrypted with safeStorage (DPAPI) in `userData/secrets.bin`. Only main reads it; the UI sees `cm_…abcd`.
+  - **Requests:** made with `net.fetch` from main. Image-to-image only: the flattened page goes as `reference_images[0]` (PNG, long side ≤ 2048, under 10 MB). Size: `1536x1024` / `1024x1536` / `1024x1024`, whichever matches the page's shape.
+  - **No automatic retries:** image calls are billed again on every attempt, and idempotency keys don't replay images.
+  - **Logging:** every call goes into `library.db` `api_calls` (migration 2) for Usage. Credits come from the documented price list; no balance API exists.
+  - **Results:** written by main straight into the workspace as assets, then recorded in `doc.generations` via `store.record()`, which is outside undo, so undo never deletes a paid result. They are saved with the project as normal assets. This replaces the spec's separate `generations.json` with a single source of truth.
+  - **Use as page:** replaces the page's picture, patches and layers (the result already shows them). The width is kept and the height follows the result's shape. One undo step.
+  - **Account history:** listed without thumbnails, because the CSP blocks remote images and the signed links expire. Import downloads through main (https only, PNG or JPEG, size-capped).
+  - **Tests:** the test-only `STUDIO_CALLMISSED_URL` (ignored when packaged) points the app at the fake server in `tests/e2e/ai.spec.ts`.
 - e2e helpers delete their temp profiles on exit: each profile holds model copies, and 12 GB of leftovers once filled the disk.
 - GPU mode changes are acknowledged by the worker (`configure` + `ack`), `settings:update` awaits it, and `runJob` awaits any in-flight settings save.
 - Packaging: `electron-builder.yml` unpacks `onnxruntime-node` from asar and drops non-win-x64 binaries (verify in M7).
 
 ## Testing
 
-- `npm test` — Vitest unit (140 tests incl. opt-in real LaMa / SAM 2.1 / BiRefNet tests via `STUDIO_TEST_HEAVY=1`; real OCR models are downloaded once into `.cache/models`, SHA-256 verified): IPC contracts, CSP, protocol path guard, project zip, library DB, project service, document store, snapping, arrange, model manager (local HTTP server: resume, bad checksum, 404, cancel, version bump), session pool fallback, job queue, manifest pinning/licences, ONNX fixture.
-- `npm run test:e2e` — builds then Playwright drives Electron (46 tests: pdf.spec covers PDF export, native text, removing replaced text, searchable scans, page ops and installed fonts; layers.spec covers transparency and background choice; objects.spec covers Magic Select / Eraser / Remove background / Lift handwriting / Adjust, geometry.spec covers rotate / resize / crop, incl. Detect Text with real OCR models seeded via `seedModels`). Helpers in `tests/e2e/helpers.ts`: isolated profile via `STUDIO_USER_DATA`, `launchApp({ modelSetupDone })` seeds settings, dialog stubs, generated PNG/PDF fixtures, `closeApp()` force-exits (native unsaved-changes modal would hang the run). `tests/fixtures/onnx.ts` hand-encodes a tiny Identity ONNX model so model tests never hit the network.
+- `npm test` — Vitest unit (160 tests incl. opt-in real LaMa / SAM 2.1 / BiRefNet tests via `STUDIO_TEST_HEAVY=1`; real OCR models are downloaded once into `.cache/models`, SHA-256 verified): IPC contracts, CSP, protocol path guard, project zip, library DB, project service, document store, snapping, arrange, model manager (local HTTP server: resume, bad checksum, 404, cancel, version bump), session pool fallback, job queue, manifest pinning/licences, ONNX fixture.
+- `npm run test:e2e` — builds then Playwright drives Electron (54 tests: ai.spec covers the AI flow against a fake CallMissed server; pdf.spec covers PDF export, native text, removing replaced text, searchable scans, page ops and installed fonts; layers.spec covers transparency and background choice; objects.spec covers Magic Select / Eraser / Remove background / Lift handwriting / Adjust, geometry.spec covers rotate / resize / crop, incl. Detect Text with real OCR models seeded via `seedModels`). Helpers in `tests/e2e/helpers.ts`: isolated profile via `STUDIO_USER_DATA`, `launchApp({ modelSetupDone })` seeds settings, dialog stubs, generated PNG/PDF fixtures, `closeApp()` force-exits (native unsaved-changes modal would hang the run). `tests/fixtures/onnx.ts` hand-encodes a tiny Identity ONNX model so model tests never hit the network.
 
 ## Decisions log
 

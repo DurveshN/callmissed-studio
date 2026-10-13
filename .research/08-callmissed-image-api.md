@@ -107,3 +107,16 @@ Reference-image editing requires a `gpt-image-*` model (docs). Free keys can use
 - Confirm `/v1/images/edits` exists and whether a `mask` field is accepted.
 - Confirm exact response field names and PNG vs JPEG by model.
 - Confirm the idempotency header (page `/docs/idempotency` not read).
+
+## Verification for M6 (2026-10-13)
+
+Re-checked against the raw docs (`/docs/image-generation.md`, `/docs/errors.md`, `/docs/models.md`, `/docs/idempotency.md`) before implementing:
+
+- `reference_images` accepts **bare base64 or a `data:` URL**; up to 16, 10 MB each decoded. No mask field and no `/v1/images/edits` endpoint: reference images are the only way to edit.
+- Response `{created, data: [{b64_json, url?, revised_prompt}]}`.
+- **Error body** (`/v1/*`): `{error: {message, type, code}}`; `code` is the stable field. 422 validation errors use `{detail: [{loc, msg, type}]}`. 401/402/403 must not be retried; 429 and 503 carry `Retry-After`.
+- **History** `GET /v1/images/history?limit=1..100&before=<ISO cursor>` → `{data: [{id, url, model, size, prompt, negative_prompt, revised_prompt, seed, steps, created}], next_cursor}` (`next_cursor` is null on the last page; `created` is an integer timestamp).
+- **Models**: the public catalogue `GET /api/v1/models?category=image` needs no key: `{object: "list", total, data: [{id, name, category, pricing, free, status?, status_message?, …}]}`; `status: "maintenance"` marks unavailable models. `GET /v1/models` (with a key) is a good key check.
+- **Idempotency** (`Idempotency-Key`, ≤ 255 chars, 24 h): image responses are binary or over 1 MiB, so they are **not stored for replay**. A retried image request runs and bills again, so the app never retries generations automatically.
+- **No REST endpoint for the credit balance** is documented. Usage is tracked locally from the API calls the app makes; the balance is shown in the CallMissed console.
+- Credits per image (unchanged): 25 for every `gpt-image-*` model. "Reference images add a per-reference charge on the three Google models only", so Google models may accept references, but the app offers the `gpt-image-*` models only, as the spec says.
