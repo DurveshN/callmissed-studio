@@ -16,6 +16,8 @@
 
 ## Notes
 
+- Push the version tag on its own: GitHub starts no workflow for tags when more than three are
+  pushed at once (`v0.9.0` was published by hand with `gh release create` for that reason).
 - The installer is **not code-signed** yet, so Windows SmartScreen warns on first run. Signing
   (SignPath Foundation or Azure Artifact Signing) is required before 1.0.0.
 - There is no auto-update yet: users download new versions from the Releases page. Installing over
