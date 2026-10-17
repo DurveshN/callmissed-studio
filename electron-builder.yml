@@ -1,6 +1,6 @@
-# Minimal packaging config; installer, publishing and file associations are completed in milestone M7.
 appId: com.callmissed.studio
 productName: CallMissed Studio
+copyright: Copyright © 2026 CallMissed Studio contributors
 directories:
   buildResources: build
   output: release/${version}
@@ -10,6 +10,12 @@ files:
   # Only the Windows x64 ONNX Runtime binaries are needed.
   - '!node_modules/onnxruntime-node/bin/napi-v*/{darwin,linux}/**'
   - '!node_modules/onnxruntime-node/bin/napi-v*/win32/arm64/**'
+  # Main loads each library's CommonJS build: leave out ES/UMD/TypeScript copies, sources and maps.
+  - '!node_modules/@cantoo/pdf-lib/{dist,es,src,ts3.4}/**'
+  - '!node_modules/@cantoo/fontkit/{src,types}/**'
+  - '!node_modules/@cantoo/fontkit/dist/{browser,module,browser-module}*'
+  - '!node_modules/zod/src/**'
+  - '!node_modules/**/*.{map,md,markdown,d.ts,d.mts,d.cts,ts}'
 # Native modules and their DLLs cannot be loaded from inside the asar archive.
 asarUnpack:
   - node_modules/onnxruntime-node/**
@@ -19,6 +25,37 @@ extraResources:
     filter:
       - '**/*'
       - '!branding/**'
+# The app is English-only: ship only that Chromium locale (saves ~48 MB).
+electronLanguages:
+  - en-US
 win:
-  target: nsis
+  target:
+    - target: nsis
+      arch: [x64]
   icon: build/icon.ico
+  # Unsigned until a code-signing route is set up (see CONTEXT.md open items).
+  signAndEditExecutable: true
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: CallMissed Studio
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  license: LICENSE
+  artifactName: CallMissed-Studio-Setup-${version}-x64.${ext}
+  # Projects, models and the encrypted API key stay unless the user deletes them.
+  deleteAppDataOnUninstall: false
+  # "Open with" entries for images and PDFs (never taking over the default app).
+  include: build/installer.nsh
+# Double-clicking a project opens it in the app.
+fileAssociations:
+  - ext: cmsp
+    name: CallMissed Studio project
+    description: CallMissed Studio project
+    role: Editor
+    icon: build/icon.ico
+# Releases are published with `gh release` (see RELEASING.md); no auto-update yet.
+publish: null

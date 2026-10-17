@@ -240,9 +240,9 @@ Source: `.research/08-callmissed-image-api.md`. Exact field names are re-verifie
 ## 10. Release
 
 - electron-builder NSIS x64, per-user install, selectable directory, `.cmsp` file association, "Open with" for PNG/JPG/PDF.
-- Tag `v*` → GitHub Actions builds and publishes to GitHub Releases; electron-updater checks on launch and asks before installing.
+- Tag `v*` → GitHub Actions builds and publishes to GitHub Releases. electron-updater (checks on launch and asks before installing) is deferred: 0.9.x betas are downloaded manually.
 - Code signing wired but disabled until owner chooses SignPath Foundation or Azure Artifact Signing; README documents SmartScreen warning meanwhile.
-- Repo docs: `LICENSE` (MIT), `THIRD_PARTY_LICENSES.md` (generated, includes model licenses), `README.md`, `CONTRIBUTING.md`, `CONTEXT.md` (updated each session), `.research/`.
+- Repo docs: `LICENSE` (MIT), `THIRD_PARTY_LICENSES.md` (generated, includes model licenses), `README.md`, `RELEASING.md`, `CONTRIBUTING.md`, `CONTEXT.md` (updated each session), `.research/`.
 
 ## 11. Milestones
 
