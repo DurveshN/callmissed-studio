@@ -1,7 +1,7 @@
 {
   "name": "callmissed-studio",
   "productName": "CallMissed Studio",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Open-source image & PDF editor with local text/object detection and CallMissed AI generation",
   "license": "MIT",
   "author": "CallMissed Studio contributors",
