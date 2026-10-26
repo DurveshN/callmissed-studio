@@ -87,6 +87,7 @@ test('resizes the page with its aspect ratio kept', async () => {
   const width = window.getByTestId('page-section').getByLabel('Width')
   await width.fill('200')
   await width.press('Enter')
+  await expect(window.getByRole('button', { name: /^Undo Resize page/ })).toBeVisible()
   const png = await exported()
   expect([png.width, png.height]).toEqual([200, 150])
   near(png.at(25, 25), RED)
