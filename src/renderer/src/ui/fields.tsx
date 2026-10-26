@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { ColorPicker } from './ColorPicker'
 import styles from './ui.module.css'
 
 export function Field({ label, children }: { label: string; children: ReactNode }) {
@@ -76,23 +77,17 @@ export function NumberField({
 export function ColorField({
   label,
   value,
-  onChange
+  onChange,
+  suggestions
 }: {
   label: string
   value: string
   onChange(v: string): void
+  suggestions?: string[]
 }) {
   return (
     <Field label={label}>
-      <span className={styles.colorRow}>
-        <input
-          className={styles.color}
-          type="color"
-          value={value.slice(0, 7)}
-          onChange={(e) => onChange(e.target.value)}
-        />
-        <span className={styles.mono}>{value.slice(0, 7).toUpperCase()}</span>
-      </span>
+      <ColorPicker label={label} value={value} onChange={onChange} suggestions={suggestions ?? []} showHex />
     </Field>
   )
 }

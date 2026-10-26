@@ -17,6 +17,8 @@ import { ArrangeIcon } from '../arrange/ArrangeIcon'
 import { availableWeights, fontByFamily } from '../fonts/catalog'
 import { FontSelect } from '../fonts/FontSelect'
 import { fontSizeUnit } from '../text/text-style'
+import { useDocumentColors } from '../document/document-colors'
+import { ColorPicker } from '../../ui/ColorPicker'
 import { selectActivePage, selectSelectedLayers, useDocumentStore } from '../document/store'
 import { ColorField, Field, NumberField } from '../../ui/fields'
 import ui from '../../ui/ui.module.css'
@@ -89,6 +91,7 @@ function TextSection({ layer }: { layer: TextLayer }) {
   const known = fontByFamily(layer.fontFamily)
   const weights = known ? availableWeights(known) : WEIGHTS.map(([w]) => w)
   const unit = doc && page ? fontSizeUnit(doc, page) : { perUnit: 1, suffix: 'px' }
+  const colors = useDocumentColors()
   return (
     <section className={styles.section}>
       <h3 className={styles.heading}>Text</h3>
@@ -139,6 +142,7 @@ function TextSection({ layer }: { layer: TextLayer }) {
         />
         <ColorField
           label="Color"
+          suggestions={colors}
           value={layer.color}
           onChange={(color) => set(layer, { color }, 'Text color', 'color')}
         />
@@ -177,6 +181,7 @@ function TextSection({ layer }: { layer: TextLayer }) {
 
 function ShapeSection({ layer }: { layer: ShapeLayer }) {
   const isLine = layer.shape === 'line'
+  const colors = useDocumentColors()
   return (
     <section className={styles.section}>
       <h3 className={styles.heading}>Appearance</h3>
@@ -191,11 +196,11 @@ function ShapeSection({ layer }: { layer: ShapeLayer }) {
                 onChange={(e) => set(layer, { fill: e.target.checked ? '#5b8def' : null }, 'Fill', 'fillOn')}
               />
               {layer.fill !== null && (
-                <input
-                  className={ui.color}
-                  type="color"
-                  value={layer.fill.slice(0, 7)}
-                  onChange={(e) => set(layer, { fill: e.target.value }, 'Fill color', 'fill')}
+                <ColorPicker
+                  label="Fill color"
+                  value={layer.fill}
+                  suggestions={colors}
+                  onChange={(fill) => set(layer, { fill }, 'Fill color', 'fill')}
                 />
               )}
             </span>
@@ -214,11 +219,11 @@ function ShapeSection({ layer }: { layer: ShapeLayer }) {
               />
             )}
             {(layer.stroke !== null || isLine) && (
-              <input
-                className={ui.color}
-                type="color"
-                value={(layer.stroke ?? '#111111').slice(0, 7)}
-                onChange={(e) => set(layer, { stroke: e.target.value }, 'Stroke color', 'stroke')}
+              <ColorPicker
+                label="Stroke color"
+                value={layer.stroke ?? '#111111'}
+                suggestions={colors}
+                onChange={(stroke) => set(layer, { stroke }, 'Stroke color', 'stroke')}
               />
             )}
           </span>

@@ -188,7 +188,11 @@ test('draws a text box and styles it from the text bar', async () => {
   await expect(bar).toContainText('pt')
   await bar.getByLabel('Font size').fill('30')
   await bar.getByLabel('Font size').press('Enter')
-  await bar.getByLabel('Text color').fill('#cc2200')
+  // Colour from the in-app picker's hex code.
+  await bar.getByRole('button', { name: 'Text color' }).click()
+  await window.getByTestId('color-picker').getByLabel('Hex color').fill('#cc2200')
+  await window.keyboard.press('Escape')
+  await expect(window.getByTestId('color-picker')).toBeHidden()
 
   const zoom =
     Number.parseInt((await window.getByTitle('Actual size (Ctrl+1)').textContent()) ?? '', 10) / 100
@@ -205,4 +209,32 @@ test('draws a text box and styles it from the text bar', async () => {
   // As wide as the drawn box.
   expect(Number(layer?.['width']) * zoom).toBeGreaterThan(240 * 0.95)
   expect(Number(layer?.['width']) * zoom).toBeLessThan(240 * 1.05)
+})
+
+test('recolours an added text box from the inspector, with swatches and the eyedropper', async () => {
+  // The text box drawn above (on a PDF page) is still selected.
+  await window.getByRole('tab', { name: 'Inspector' }).click()
+  const inspector = window.getByTestId('inspector')
+  const color = inspector.getByRole('button', { name: 'Color', exact: true })
+  await expect(color).toContainText('#CC2200')
+  await color.click()
+  const picker = window.getByTestId('color-picker')
+  await picker.getByRole('button', { name: '#30A46C' }).click()
+  await expect(color).toContainText('#30A46C')
+  await expect(window.getByRole('button', { name: /^Undo Text color/ })).toBeEnabled()
+
+  // The real eyedropper waits for a click anywhere on screen; a stand-in answers instead.
+  await window.evaluate(() => {
+    ;(window as unknown as { EyeDropper: unknown }).EyeDropper = class {
+      open() {
+        return Promise.resolve({ sRGBHex: '#123456' })
+      }
+    }
+  })
+  await picker.getByRole('button', { name: 'Pick a color from the screen' }).click()
+  await expect(color).toContainText('#123456')
+  // The text bar shows the same colour.
+  await window.keyboard.press('Escape')
+  await window.getByTestId('text-bar').getByRole('button', { name: 'Text color' }).click()
+  await expect(window.getByTestId('color-picker').getByLabel('Hex color')).toHaveValue('#123456')
 })

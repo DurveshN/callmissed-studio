@@ -40,6 +40,7 @@ CallMissed Studio — open-source (MIT) Windows Electron app: local OCR/segmenta
   - Pages tab is always shown: Insert PDF / images (`file:pick-pages` multi-select + `workspace:import-pages`), Blank page (a white PNG page), and the ⋯ / right-click menu (insert after, blank after, duplicate, move to start/up/down/end, rotate, delete). Each is one undo step.
   - `pointsPerUnit(doc, page)` lives in the shared model: PDF-backed pages are 1/PDF_RENDER_SCALE pt per unit even in image documents.
   - PDF export takes a page selection (all, current, or a range parsed by `parsePageRange`, in the order written).
+  - Colours: an in-app `ColorPicker` (`ui/ColorPicker.tsx`: saturation/value square, hue, hex, presets, colours used in the document, and Chromium's `EyeDropper` to pick from anywhere on screen) replaces native `<input type="color">` everywhere (text bar, Inspector text colour, shape fill/stroke). The owner could not recolour an added text box on a PDF page with the native Windows dialog; automated input could not reproduce it, so that dialog is no longer used. Presses inside the popover keep the text editor focused.
   - Text: the Text tool draws a box by dragging (click still places one). `TextBar` floats above the selected or edited text box (font, size, colour, bold, italic, align); its buttons keep the editor focused. Sizes show in pt on PDF pages and px on pictures (`fontSizeUnit`).
 
 ## Pinned toolchain (compatibility-constrained)

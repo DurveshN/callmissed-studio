@@ -8,6 +8,8 @@ import { FontSelect } from '../fonts/FontSelect'
 import { useToolStore } from '../tools/tool-store'
 import { useViewportStore } from '../canvas/viewport-store'
 import { fontSizeUnit, isBold, toggledWeight } from './text-style'
+import { useDocumentColors } from '../document/document-colors'
+import { ColorPicker } from '../../ui/ColorPicker'
 import ui from '../../ui/ui.module.css'
 import styles from './TextBar.module.css'
 
@@ -58,6 +60,7 @@ export function TextBar() {
   const viewport = useViewportStore(useShallow((s) => ({ scale: s.scale, x: s.x, y: s.y, width: s.width })))
   // The bar's own size places it (it changes with the font name).
   const [size, setSize] = useState({ width: 0, height: 0 })
+  const colors = useDocumentColors()
   const ref = useCallback((el: HTMLDivElement | null) => {
     if (!el) return
     const observer = new ResizeObserver(() => setSize({ width: el.offsetWidth, height: el.offsetHeight }))
@@ -119,15 +122,12 @@ export function TextBar() {
           <Plus size={14} />
         </button>
       </span>
-      <label className={styles.color} title="Text color">
-        <span className={styles.swatch} style={{ background: layer.color.slice(0, 7) }} />
-        <input
-          type="color"
-          aria-label="Text color"
-          value={layer.color.slice(0, 7)}
-          onChange={(e) => set({ color: e.target.value }, 'Text color', 'color')}
-        />
-      </label>
+      <ColorPicker
+        label="Text color"
+        value={layer.color}
+        suggestions={colors}
+        onChange={(color) => set({ color }, 'Text color', 'color')}
+      />
       <span className={styles.divider} />
       <button
         className={ui.iconButton}
