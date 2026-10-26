@@ -13,6 +13,13 @@ async function pickOne(filters: FileFilter[]): Promise<string | null> {
   return result.canceled ? null : (result.filePaths[0] ?? null)
 }
 
+async function pickMany(filters: FileFilter[]): Promise<string[]> {
+  const win = parent()
+  const options = { properties: ['openFile' as const, 'multiSelections' as const], filters }
+  const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options)
+  return result.canceled ? [] : result.filePaths
+}
+
 async function pickSave(defaultPath: string, filters: FileFilter[]): Promise<string | null> {
   const win = parent()
   const options = { defaultPath, filters }
@@ -29,6 +36,12 @@ export const dialogs = {
       { name: 'PDF', extensions: ['pdf'] }
     ]),
   pickImage: () => pickOne([{ name: 'Images', extensions: [...IMAGE_EXTENSIONS] }]),
+  pickPages: () =>
+    pickMany([
+      { name: 'PDFs and images', extensions: ['pdf', ...IMAGE_EXTENSIONS] },
+      { name: 'PDF', extensions: ['pdf'] },
+      { name: 'Images', extensions: [...IMAGE_EXTENSIONS] }
+    ]),
   pickProjectSavePath: (suggestedName: string) =>
     pickSave(suggestedName, [{ name: 'CallMissed Studio project', extensions: [PROJECT_EXTENSION] }]),
   pickExportPath: (suggestedName: string, format: 'png' | 'jpeg' | 'webp' | 'pdf') => {

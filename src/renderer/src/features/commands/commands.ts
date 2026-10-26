@@ -106,10 +106,11 @@ export const commands = {
   },
 
   /**
-   * Exports every page as one PDF: original PDF pages keep their vectors and text, edits are drawn
-   * over them, and (when `searchable`) pages without real text get invisible recognized text.
+   * Exports the pages (all, or the 0-based `pages` in that order) as one PDF: original PDF pages keep
+   * their vectors and text, edits are drawn over them, and (when `searchable`) pages without real
+   * text get invisible recognized text.
    */
-  async exportPdf(searchable: boolean, flattenEdited: boolean): Promise<void> {
+  async exportPdf(searchable: boolean, flattenEdited: boolean, pages?: number[]): Promise<void> {
     const { doc } = useDocumentStore.getState()
     if (!doc) return
     const path = await call('export:choose-pdf-path', { suggestedName: doc.name })
@@ -119,6 +120,7 @@ export const commands = {
       const plan = await buildPdfPlan(doc, {
         searchable: ocr,
         flattenEdited,
+        ...(pages ? { pages } : {}),
         signal,
         progress: (done, total) => report((done / total) * 0.8, `Preparing page ${done} of ${total}…`)
       })
@@ -126,7 +128,6 @@ export const commands = {
       await call('export:write-pdf', {
         path,
         docId: doc.id,
-        sourceAssetId: doc.source.kind === 'pdf' ? doc.source.assetId : null,
         plan
       })
       notify.info('Exported')

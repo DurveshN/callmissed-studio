@@ -9,6 +9,8 @@ import type { PdfPlan } from '../../src/shared/pdf/plan'
 import { viewToPdf } from '../../src/shared/pdf/view-matrix'
 
 const IMAGE = '00000000-0000-4000-8000-0000000000a1'
+const SOURCE = '00000000-0000-4000-8000-0000000000b1'
+const OTHER = '00000000-0000-4000-8000-0000000000b2'
 const poster = readFileSync('tests/fixtures/ocr-poster.png')
 const fonts = new FontFiles([join(process.cwd(), 'src', 'renderer', 'public')])
 
@@ -42,6 +44,18 @@ async function source(): Promise<Uint8Array> {
     font: await doc.embedFont(StandardFonts.Helvetica)
   })
   page.setRotation(degrees(90))
+  return doc.save()
+}
+
+/** A second PDF, inserted into the document. */
+async function other(): Promise<Uint8Array> {
+  const doc = await PDFDocument.create()
+  doc.addPage([200, 100]).drawText('Inserted document', {
+    x: 10,
+    y: 50,
+    size: 12,
+    font: await doc.embedFont(StandardFonts.Helvetica)
+  })
   return doc.save()
 }
 
@@ -156,18 +170,30 @@ beforeAll(async () => {
         width: 600,
         height: 800,
         unit: 0.5,
-        base: { kind: 'copy', index: 0, toPdf: viewToPdf(sourceViewport, 400) },
+        base: { kind: 'copy', assetId: SOURCE, index: 0, toPdf: viewToPdf(sourceViewport, 400) },
         background: null,
         patches: [{ assetId: IMAGE, x: 10, y: 10, width: 100, height: 75 }],
         layers: [text({ lines: [{ text: 'Added on the copy', width: 200 }] })],
+        ocr: []
+      },
+      {
+        width: 400,
+        height: 200,
+        unit: 0.5,
+        base: { kind: 'copy', assetId: OTHER, index: 0, toPdf: [1, 0, 0, 1, 0, 0] },
+        background: null,
+        patches: [],
+        layers: [],
         ocr: []
       }
     ]
   }
   bytes = await writePdf(plan, {
-    source: original,
-    readAsset: async () => {
-      throw new Error('not used')
+    readAsset: async (id) => {
+      const pdfs: Record<string, Uint8Array> = { [SOURCE]: original, [OTHER]: await other() }
+      const found = pdfs[id]
+      if (!found) throw new Error(`unexpected asset ${id}`)
+      return found
     },
     fonts
   })
@@ -177,10 +203,13 @@ beforeAll(async () => {
 
 describe('PDF writer', () => {
   it('writes every page with its size, keeping copied pages as they were', () => {
-    expect(out).toHaveLength(2)
+    expect(out).toHaveLength(3)
     expect(out[0]?.size).toEqual([600, 450])
     expect(out[1]?.size).toEqual([400, 300])
     expect(out[1]?.rotate).toBe(90)
+    // Pages can come from several PDFs.
+    expect(out[2]?.size).toEqual([200, 100])
+    expect(out[2]?.text).toContain('Inserted document')
   })
 
   it('writes text as searchable text: real fonts, outlined weights and invisible OCR text', () => {

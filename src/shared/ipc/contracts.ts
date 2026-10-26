@@ -87,11 +87,21 @@ export const contracts = {
     request: z.undefined(),
     response: z.string().nullable()
   },
+  /** PDFs and images to add as pages (several can be chosen). */
+  'file:pick-pages': {
+    request: z.undefined(),
+    response: z.array(z.string())
+  },
   'workspace:open-path': {
     request: z.object({ path: z.string().min(1).max(MAX_PATH) }),
     response: z.discriminatedUnion('kind', [OpenedProject, OpenedSource])
   },
   'workspace:import-image': {
+    request: z.object({ docId: Id, path: z.string().min(1).max(MAX_PATH) }),
+    response: z.object({ assetId: Id, mime: AssetMeta.shape.mime, fileName: z.string() })
+  },
+  /** Copies a PDF or image into the document's workspace (to add its pages). */
+  'workspace:import-pages': {
     request: z.object({ docId: Id, path: z.string().min(1).max(MAX_PATH) }),
     response: z.object({ assetId: Id, mime: AssetMeta.shape.mime, fileName: z.string() })
   },
@@ -158,8 +168,6 @@ export const contracts = {
     request: z.object({
       path: z.string().max(MAX_PATH),
       docId: Id,
-      /** The document's original PDF, when pages are copied from it. */
-      sourceAssetId: Id.nullable(),
       plan: PdfPlan
     }),
     response: z.undefined()

@@ -30,7 +30,8 @@ export function RightPanel() {
   const tabs: { id: Tab; label: string }[] = [
     { id: 'inspector', label: 'Inspector' },
     { id: 'layers', label: 'Layers' },
-    ...(pageCount > 1 ? [{ id: 'pages' as const, label: `Pages (${pageCount})` }] : []),
+    // Always there: pages can be added, inserted from other files and reordered.
+    { id: 'pages', label: pageCount > 1 ? `Pages (${pageCount})` : 'Pages' },
     { id: 'ai', label: generationCount ? `AI (${generationCount})` : 'AI' }
   ]
   const active = tabs.some((t) => t.id === tab) ? tab : 'inspector'

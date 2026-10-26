@@ -1,7 +1,7 @@
 import type Konva from 'konva'
 import { useEffect, useRef, useState } from 'react'
 import { Group, Image as KonvaImage, Rect } from 'react-konva'
-import type { Page, StudioDocument } from '@shared/document/model'
+import { pdfAssetOf, type Page, type StudioDocument } from '@shared/document/model'
 import { useAdjustments } from '../adjust/use-adjustments'
 import { useAssetImage } from '../assets/asset-cache'
 import { usePdfPage } from '../assets/pdf'
@@ -17,7 +17,7 @@ export function PageBackground({ doc, page }: Props) {
   const image = useAssetImage(doc.id, bg.kind === 'image' ? bg.assetId : null)
   const pdfCanvas = usePdfPage(
     doc.id,
-    bg.kind === 'pdf' ? doc.source.assetId : null,
+    bg.kind === 'pdf' ? pdfAssetOf(doc, bg) : null,
     bg.kind === 'pdf' ? bg.pageIndex : null
   )
   const source = bg.kind === 'image' ? image : pdfCanvas

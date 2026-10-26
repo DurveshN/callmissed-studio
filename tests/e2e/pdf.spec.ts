@@ -5,7 +5,17 @@ import fontkit from '@cantoo/fontkit'
 import { PDFDocument, StandardFonts, TextRenderingMode } from '@cantoo/pdf-lib'
 import { strFromU8, unzipSync } from 'fflate'
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
-import { closeApp, launchApp, makePdf, openViaMain, seedModels, stubSaveDialog, tempDir } from './helpers'
+import {
+  closeApp,
+  launchApp,
+  makePdf,
+  makePng,
+  openViaMain,
+  seedModels,
+  stubOpenDialog,
+  stubSaveDialog,
+  tempDir
+} from './helpers'
 
 test.describe.configure({ mode: 'serial' })
 test.setTimeout(180_000)
@@ -138,19 +148,84 @@ test('reorders, deletes and restores pages, and exports them in the new order', 
   await window.getByRole('tab', { name: /Pages/ }).click()
   const order = async () => (await exportPdf(false)).map((p) => p.text.trim())
 
-  await window.getByRole('button', { name: 'Page 1' }).click({ button: 'right' })
+  await window.getByRole('button', { name: 'Page 1', exact: true }).click({ button: 'right' })
   await window.getByRole('menuitem', { name: 'Move down' }).click()
   expect(await order()).toEqual(['Chapter Two', 'Chapter One', 'Chapter Three'])
 
   await window.getByTestId('page-item').nth(2).dragTo(window.getByTestId('page-item').nth(0))
   expect(await order()).toEqual(['Chapter Three', 'Chapter Two', 'Chapter One'])
 
-  await window.getByRole('button', { name: 'Page 2' }).click({ button: 'right' })
+  await window.getByRole('button', { name: 'Page 2', exact: true }).click({ button: 'right' })
   await window.getByRole('menuitem', { name: 'Delete page' }).click()
   expect(await order()).toEqual(['Chapter Three', 'Chapter One'])
 
   await window.keyboard.press('Control+z')
   expect(await order()).toEqual(['Chapter Three', 'Chapter Two', 'Chapter One'])
+})
+
+test('inserts pages from other PDFs and pictures, duplicates and adds pages, exports a range', async () => {
+  await window.getByRole('button', { name: 'Close document' }).click()
+  const dontSave = window.getByRole('button', { name: 'Don’t save' })
+  if (await dontSave.isVisible().catch(() => false)) await dontSave.click()
+  await openViaMain(app, join(dir, 'chapters.pdf'))
+  await expect(window.getByTestId('doc-name')).toHaveText('chapters')
+
+  // A second PDF with its own page size, and a picture.
+  const other = await PDFDocument.create()
+  const helvetica = await other.embedFont(StandardFonts.Helvetica)
+  for (const text of ['Appendix A', 'Appendix B'])
+    other.addPage([400, 300]).drawText(text, { x: 40, y: 150, size: 20, font: helvetica })
+  const appendix = join(dir, 'appendix.pdf')
+  writeFileSync(appendix, await other.save())
+  const picture = join(dir, 'picture.png')
+  writeFileSync(picture, makePng(300, 200, [200, 40, 40]))
+  await stubOpenDialog(app, [appendix, picture])
+
+  await window.getByRole('tab', { name: /Pages/ }).click()
+  await window.getByRole('button', { name: 'Page 1 actions' }).click()
+  await window.getByRole('menuitem', { name: 'Insert PDF or images after' }).click()
+  await expect(window.getByRole('tab', { name: 'Pages (6)' })).toBeVisible()
+  const pages = await exportPdf(false)
+  expect(pages.map((p) => p.text.trim())).toEqual([
+    'Chapter One',
+    'Appendix A',
+    'Appendix B',
+    '',
+    'Chapter Two',
+    'Chapter Three'
+  ])
+  expect(pages[1]?.size).toEqual([400, 300])
+
+  // Duplicate page 1, then add a blank page after the copy (it is the current page).
+  await window.getByRole('button', { name: 'Page 1', exact: true }).click({ button: 'right' })
+  await window.getByRole('menuitem', { name: 'Duplicate page' }).click()
+  await window.getByRole('button', { name: 'Blank page' }).click()
+  await expect(window.getByRole('tab', { name: 'Pages (8)' })).toBeVisible()
+
+  // Only some pages, in the order written.
+  const out = join(dir, 'range.pdf')
+  await stubSaveDialog(app, out)
+  await window.keyboard.press('Control+e')
+  const dialog = window.getByRole('dialog')
+  await dialog.getByLabel('Format').selectOption('pdf')
+  await dialog.getByLabel(/^Pages/).selectOption('range')
+  await dialog.getByLabel(/Page numbers/).fill('9')
+  await expect(dialog.getByRole('button', { name: 'Export' })).toBeDisabled()
+  await dialog.getByLabel(/Page numbers/).fill('8, 1-3')
+  const check = dialog.getByLabel(/Make scanned pages searchable/)
+  if (await check.isChecked()) await check.click()
+  await dialog.getByRole('button', { name: 'Export' }).click()
+  await expect.poll(() => readFileSafe(out), { timeout: 60_000 }).not.toBeNull()
+  const pdf = await getDocument({ data: new Uint8Array(readFileSync(out)) }).promise
+  const texts = []
+  for (let i = 1; i <= pdf.numPages; i++)
+    texts.push(
+      (await (await pdf.getPage(i)).getTextContent()).items
+        .map((item) => ('str' in item ? item.str : ''))
+        .join(' ')
+        .trim()
+    )
+  expect(texts).toEqual(['Chapter Three', 'Chapter One', 'Chapter One', ''])
 })
 
 test('uses the PDF’s own installed font and skips invisible text', async () => {

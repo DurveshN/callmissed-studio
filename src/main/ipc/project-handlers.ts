@@ -7,9 +7,11 @@ import { handle } from './router'
 export function registerProjectHandlers(projects: ProjectService, library: LibraryDb): void {
   handle('file:pick-open', () => dialogs.pickOpenFile())
   handle('file:pick-image', () => dialogs.pickImage())
+  handle('file:pick-pages', () => dialogs.pickPages())
 
   handle('workspace:open-path', ({ path }) => projects.openPath(path))
   handle('workspace:import-image', ({ docId, path }) => projects.importImage(docId, path))
+  handle('workspace:import-pages', ({ docId, path }) => projects.importPages(docId, path))
   handle('workspace:autosave', async ({ docId, document, history }) => {
     await projects.autosave(docId, document, history)
   })

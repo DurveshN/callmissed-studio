@@ -27,12 +27,17 @@ import { PageBackground } from './PageBackground'
 import { registerPageGroup } from './stage-registry'
 import { snap, type Guide, type Rect as Box } from './snapping'
 import { TextEditor } from './TextEditor'
+import { TextBar } from '../text/TextBar'
+import { fontSizeUnit } from '../text/text-style'
+import { Type } from 'lucide-react'
+import { FloatingBar } from '../../ui/FloatingBar'
 import { useViewportStore } from './viewport-store'
 import styles from './CanvasView.module.css'
 
 type Drag =
   | { kind: 'pan'; lastX: number; lastY: number }
-  | { kind: 'marquee' | 'rect' | 'ellipse' | 'line'; x0: number; y0: number; x1: number; y1: number }
+  /** The text tool: a click places a text box, a drag sets its width. */
+  | { kind: 'marquee' | 'rect' | 'ellipse' | 'line' | 'text'; x0: number; y0: number; x1: number; y1: number }
   /** Magic Select: a click (tiny drag) selects at a point, a drag selects inside the box. */
   | { kind: 'box'; x0: number; y0: number; x1: number; y1: number; mode: 'new' | 'add' | 'subtract' }
   | { kind: 'brush'; points: { x: number; y: number }[] }
@@ -295,11 +300,7 @@ export function CanvasView() {
     if (tool === 'text') {
       // Keep the browser from moving focus to <body>, which would immediately blur the new text editor.
       e.evt.preventDefault()
-      const fontSize = Math.max(16, Math.round(Math.min(page.width, page.height) * 0.05))
-      const layer = newTextLayer(pos.x, pos.y - fontSize / 2, fontSize)
-      addLayer(layer)
-      useToolStore.getState().setTool('select')
-      useToolStore.getState().editText(layer.id)
+      setDrag({ kind: 'text', x0: pos.x, y0: pos.y, x1: pos.x, y1: pos.y })
       return
     }
 
@@ -353,6 +354,19 @@ export function CanvasView() {
     if (drag.kind === 'box') {
       if (tiny || drag.mode !== 'new') selectAt({ x: drag.x0, y: drag.y0 }, drag.mode)
       else selectBox({ x: drag.x0, y: drag.y0 }, { x: drag.x1, y: drag.y1 })
+      return
+    }
+
+    if (drag.kind === 'text') {
+      // A whole number of points (PDF pages) or pixels (pictures).
+      const perUnit = doc ? fontSizeUnit(doc, page).perUnit : 1
+      const fontSize = Math.max(16, Math.round(Math.min(page.width, page.height) * 0.05 * perUnit) / perUnit)
+      const layer = tiny
+        ? newTextLayer(drag.x0, drag.y0 - fontSize / 2, fontSize)
+        : { ...newTextLayer(x, y, fontSize), width: Math.max(w, fontSize) }
+      addLayer(layer)
+      useToolStore.getState().setTool('select')
+      useToolStore.getState().editText(layer.id)
       return
     }
 
@@ -529,6 +543,17 @@ export function CanvasView() {
         </KonvaLayer>
       </Stage>
       {editingLayer?.type === 'text' && <TextEditor key={editingLayer.id} layer={editingLayer} />}
+      <TextBar />
+      {tool === 'text' && (
+        <FloatingBar
+          testId="text-tool-bar"
+          status="idle"
+          icon={<Type size={16} />}
+          text="Click to add text, or drag to draw a text box"
+          onClose={() => useToolStore.getState().setTool('select')}
+          closeLabel="Stop adding text"
+        />
+      )}
       <DetectBar />
       <SelectBar />
       <EraserBar />

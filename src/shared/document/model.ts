@@ -76,7 +76,12 @@ export const Patch = z.object({
 
 export const PageBackground = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('image'), assetId: Id }),
-  z.object({ kind: z.literal('pdf'), pageIndex: z.number().int().nonnegative() })
+  z.object({
+    kind: z.literal('pdf'),
+    pageIndex: z.number().int().nonnegative(),
+    /** The PDF asset the page comes from; absent means the document's own PDF (`source.assetId`). */
+    assetId: Id.optional()
+  })
 ])
 
 export const Page = z.object({
@@ -138,3 +143,16 @@ export type Generation = z.infer<typeof Generation>
 export type PageBackground = z.infer<typeof PageBackground>
 export type AssetMime = z.infer<typeof AssetMeta>['mime']
 export type StudioDocument = z.infer<typeof StudioDocument>
+
+/**
+ * Points per page unit: PDF pages are edited at PDF_RENDER_SCALE pixels per point, pictures at 96 dpi
+ * (pictures in a PDF document keep the PDF scale, as they were made from its pages).
+ */
+export function pointsPerUnit(doc: StudioDocument, page: Page): number {
+  return page.background.kind === 'pdf' || doc.source.kind === 'pdf' ? 1 / PDF_RENDER_SCALE : 0.75
+}
+
+/** The PDF asset a PDF-backed page is drawn from (pages can come from several PDFs). */
+export function pdfAssetOf(doc: StudioDocument, bg: Extract<PageBackground, { kind: 'pdf' }>): string {
+  return bg.assetId ?? doc.source.assetId
+}

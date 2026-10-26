@@ -68,13 +68,14 @@ export const PdfPage = z.object({
   height: z.number().positive(),
   unit: z.number().positive(),
   /**
-   * 'copy': start from page `index` of the source PDF (vectors and text kept); `toPdf` maps the
+   * 'copy': start from page `index` of the PDF asset `assetId` (vectors and text kept); `toPdf` maps the
    * page's view space (points, origin bottom-left, y up, as displayed) to that page's PDF user space.
    * 'new': a blank page of the given size.
    */
   base: z.discriminatedUnion('kind', [
     z.object({
       kind: z.literal('copy'),
+      assetId: Id,
       index: z.number().int().nonnegative(),
       toPdf: z.tuple([Finite, Finite, Finite, Finite, Finite, Finite])
     }),

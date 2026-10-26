@@ -14,7 +14,9 @@ import type { Layer, ShapeLayer, TextLayer } from '@shared/document/model'
 import { deleteLayers, renameDocument, updateLayer } from '../document/layer-ops'
 import { ARRANGE_ACTIONS, arrange, canArrange } from '../arrange/arrange'
 import { ArrangeIcon } from '../arrange/ArrangeIcon'
-import { ALL_FONTS, availableWeights, fontByFamily } from '../fonts/catalog'
+import { availableWeights, fontByFamily } from '../fonts/catalog'
+import { FontSelect } from '../fonts/FontSelect'
+import { fontSizeUnit } from '../text/text-style'
 import { selectActivePage, selectSelectedLayers, useDocumentStore } from '../document/store'
 import { ColorField, Field, NumberField } from '../../ui/fields'
 import ui from '../../ui/ui.module.css'
@@ -82,8 +84,11 @@ function GeometrySection({ layer }: { layer: Layer }) {
 }
 
 function TextSection({ layer }: { layer: TextLayer }) {
+  const doc = useDocumentStore((s) => s.doc)
+  const page = useDocumentStore(selectActivePage)
   const known = fontByFamily(layer.fontFamily)
   const weights = known ? availableWeights(known) : WEIGHTS.map(([w]) => w)
+  const unit = doc && page ? fontSizeUnit(doc, page) : { perUnit: 1, suffix: 'px' }
   return (
     <section className={styles.section}>
       <h3 className={styles.heading}>Text</h3>
@@ -95,35 +100,20 @@ function TextSection({ layer }: { layer: TextLayer }) {
         />
       </Field>
       <Field label="Font">
-        <select
-          className={ui.select}
+        <FontSelect
           value={layer.fontFamily}
-          onChange={(e) => set(layer, { fontFamily: e.target.value }, 'Change font', 'font')}
-        >
-          {!known && <option value={layer.fontFamily}>{layer.fontFamily}</option>}
-          <optgroup label="Included fonts">
-            {ALL_FONTS.filter((f) => f.source === 'bundled').map((f) => (
-              <option key={f.family} value={f.family} style={{ fontFamily: f.family }}>
-                {f.family}
-              </option>
-            ))}
-          </optgroup>
-          <optgroup label="Windows fonts">
-            {ALL_FONTS.filter((f) => f.source === 'system').map((f) => (
-              <option key={f.family} value={f.family} style={{ fontFamily: f.family }}>
-                {f.family}
-              </option>
-            ))}
-          </optgroup>
-        </select>
+          onChange={(fontFamily) => set(layer, { fontFamily }, 'Change font', 'font')}
+        />
       </Field>
       <div className={styles.grid}>
         <NumberField
           label="Size"
-          value={layer.fontSize}
+          value={layer.fontSize * unit.perUnit}
+          suffix={unit.suffix}
           min={1}
           max={2000}
-          onChange={(fontSize) => set(layer, { fontSize }, 'Font size', 'size')}
+          precision={unit.perUnit === 1 ? 0 : 1}
+          onChange={(size) => set(layer, { fontSize: size / unit.perUnit }, 'Font size', 'size')}
         />
         <Field label="Weight">
           <select

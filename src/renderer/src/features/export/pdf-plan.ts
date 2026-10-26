@@ -1,5 +1,5 @@
 import type { Adjustments, Layer, Page, StudioDocument } from '@shared/document/model'
-import { PDF_RENDER_SCALE } from '@shared/document/model'
+import { pdfAssetOf, pointsPerUnit } from '@shared/document/model'
 import type { PdfLayer, PdfOcrLine, PdfPage, PdfPlan } from '@shared/pdf/plan'
 import { viewToPdf } from '@shared/pdf/view-matrix'
 import { adjustPixels } from '../adjust/adjust'
@@ -8,11 +8,6 @@ import { pdfPageInfo } from '../assets/pdf'
 import { textLayout } from '../canvas/text-metrics'
 import { MlError, runJob } from '../ml/ml-client'
 import { encodePng, snapshot } from '../raster/raster-target'
-
-/** Points per page unit: PDF pages are edited at PDF_RENDER_SCALE pixels per point, images at 96 dpi. */
-export function pointsPerUnit(doc: StudioDocument): number {
-  return doc.source.kind === 'pdf' ? 1 / PDF_RENDER_SCALE : 0.75
-}
 
 export interface PlanOptions {
   /** Add invisible recognized text to pages that show no real text (scans, photos). */
@@ -23,6 +18,8 @@ export interface PlanOptions {
    * under the patch but still selectable and searchable.
    */
   flattenEdited: boolean
+  /** 0-based indexes of the pages to write, in order (all pages when absent). */
+  pages?: number[]
   signal?: AbortSignal
   progress?(done: number, total: number): void
 }
@@ -106,7 +103,7 @@ async function pagePlan(
   images: Images,
   options: PlanOptions
 ): Promise<PdfPage> {
-  const unit = pointsPerUnit(doc)
+  const unit = pointsPerUnit(doc, page)
   const bg = page.background
   const layers = await Promise.all(page.layers.filter((l) => l.visible).map((l) => layerPlan(l, images)))
   let base: PdfPage['base'] = { kind: 'new' }
@@ -117,8 +114,9 @@ async function pagePlan(
   const flatten = bg.kind === 'pdf' && options.flattenEdited && page.patches.length > 0
   if (bg.kind === 'pdf' && !page.adjustments && !flatten) {
     // The original page is copied as it is (vectors and text kept); edits are drawn over it.
-    const info = await pdfPageInfo(doc.id, doc.source.assetId, bg.pageIndex)
-    base = { kind: 'copy', index: bg.pageIndex, toPdf: viewToPdf(info.transform, info.height) }
+    const assetId = pdfAssetOf(doc, bg)
+    const info = await pdfPageInfo(doc.id, assetId, bg.pageIndex)
+    base = { kind: 'copy', assetId, index: bg.pageIndex, toPdf: viewToPdf(info.transform, info.height) }
     hasText = info.hasText
   } else if (bg.kind === 'image' && !page.adjustments) {
     background = await images.picture(bg.assetId, undefined)
@@ -136,11 +134,13 @@ async function pagePlan(
 /** Everything the PDF writer needs for `doc`, page by page. */
 export async function buildPdfPlan(doc: StudioDocument, options: PlanOptions): Promise<PdfPlan> {
   const images = new Images(doc)
+  const chosen = options.pages ? options.pages.flatMap((i) => doc.pages[i] ?? []) : doc.pages
+  if (chosen.length === 0) throw new Error('No pages to export')
   const pages: PdfPage[] = []
-  for (const [i, page] of doc.pages.entries()) {
+  for (const [i, page] of chosen.entries()) {
     if (options.signal?.aborted) throw new MlError('CANCELLED', 'Cancelled')
     pages.push(await pagePlan(doc, page, images, options))
-    options.progress?.(i + 1, doc.pages.length)
+    options.progress?.(i + 1, chosen.length)
   }
   return { title: doc.name, pages, images: images.extra }
 }

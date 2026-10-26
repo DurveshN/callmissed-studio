@@ -21,8 +21,9 @@ This is a beta (0.9). Please report problems on the [issues page](https://github
 - **Detect Text** (`D`): finds every line of text in a picture or PDF page and turns it into editable text in a matching font, size, colour and angle, erasing the original.
 - **Magic Select** (`W`): click any object to select it, then cut it to its own layer, copy it, or remove it (the gap is filled in).
 - **Eraser** (`B`), **Remove background**, **Crop** (`C`), rotate, resize, and brightness / contrast / saturation.
+- **Text boxes** (`T`): click to add text or drag to draw a box; the bar above it changes font, size, colour, bold, italic and alignment.
 - **Layers**: text, shapes, lines and pictures; choose which picture is the page background.
-- **PDFs**: edit each page, reorder, rotate or delete pages, and export a real PDF (see below).
+- **Pages**: insert the pages of other PDFs or pictures anywhere, add blank pages, duplicate, reorder, rotate or delete pages, and export all pages or a range as a real PDF (see below).
 - **AI generation**: describe a change and get new versions of the page from CallMissed models.
 - Export to PNG, JPEG, WebP or PDF; save projects as `.cmsp` files with full undo history.
 
@@ -35,7 +36,8 @@ Text detection, object selection, erasing and background removal run on your PC 
 ## Editing PDFs
 
 - **Detect Text on a PDF page** reads the page's own text: exact words, fonts and positions, with no recognition needed. Scanned pages, and pictures inside pages, are recognized with OCR instead.
-- **Export → PDF** writes every page. Pages you did not change are copied as they are, so their vectors and text stay intact. Your edits are drawn on top as real text, using embedded fonts. You can optionally make scanned pages searchable.
+- **Pages tab**: insert PDFs or pictures (each PDF page, or each picture, becomes a page), add blank pages, duplicate pages, drag to reorder, and rotate or delete from a page's ⋯ menu. Inserted PDF pages stay vector, like the original's.
+- **Export → PDF** writes every page, the current page, or a range such as `1-3, 5` (to split or extract pages). Pages you did not change are copied as they are, so their vectors and text stay intact. Your edits are drawn on top as real text, using embedded fonts. You can optionally make scanned pages searchable.
 - **Known limitation:** the original text inside a PDF page is not edited in place. Replaced text is erased visually and new text is placed over it. By default, the export writes such edited pages as images ("Remove replaced text"), so the old text is really gone. If you turn that option off, edited pages stay as vectors, but the replaced text remains in the file under the edit, where it can still be selected and searched.
 
 ## AI generation (CallMissed)

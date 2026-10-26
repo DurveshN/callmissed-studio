@@ -1,4 +1,4 @@
-import type { ImageLayer, Page, StudioDocument } from '@shared/document/model'
+import { pdfAssetOf, type ImageLayer, type Page, type StudioDocument } from '@shared/document/model'
 import { loadAssetImage } from '../assets/asset-cache'
 import { renderPdfPage } from '../assets/pdf'
 
@@ -36,7 +36,7 @@ function canvas(width: number, height: number): OffscreenCanvasRenderingContext2
 async function pageBackground(doc: StudioDocument, page: Page): Promise<CanvasImageSource> {
   const bg = page.background
   if (bg.kind === 'image') return loadAssetImage(doc.id, bg.assetId)
-  return renderPdfPage(doc.id, doc.source.assetId, bg.pageIndex)
+  return renderPdfPage(doc.id, pdfAssetOf(doc, bg), bg.pageIndex)
 }
 
 /** Composites the page background and its patches at page resolution. */

@@ -134,13 +134,13 @@ export async function closeApp(app: ElectronApplication): Promise<void> {
 }
 
 /** Makes the next native open dialog return `path`. */
-export async function stubOpenDialog(app: ElectronApplication, path: string): Promise<void> {
-  await app.evaluate(({ dialog }, filePath) => {
-    dialog.showOpenDialog = (async () => ({
-      canceled: false,
-      filePaths: [filePath]
-    })) as typeof dialog.showOpenDialog
-  }, path)
+export async function stubOpenDialog(app: ElectronApplication, path: string | string[]): Promise<void> {
+  await app.evaluate(
+    ({ dialog }, filePaths) => {
+      dialog.showOpenDialog = (async () => ({ canceled: false, filePaths })) as typeof dialog.showOpenDialog
+    },
+    Array.isArray(path) ? path : [path]
+  )
 }
 
 /** Installs real model packs (from the verified .cache) into a test profile before launch. */

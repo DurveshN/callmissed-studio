@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { commands } from '../commands/commands'
 import { selectActivePage, useDocumentStore } from '../document/store'
+import { parsePageRange } from '../pages/page-range'
 import type { ExportFormat } from './render-page'
 import { Field } from '../../ui/fields'
 import ui from '../../ui/ui.module.css'
@@ -13,17 +14,25 @@ export function ExportDialog({ onClose }: { onClose(): void }) {
   const [format, setFormat] = useState<ExportFormat | 'pdf'>('png')
   const [searchable, setSearchable] = useState(true)
   const [flatten, setFlatten] = useState(true)
-  const fromPdf = useDocumentStore((s) => s.doc?.source.kind === 'pdf')
+  const fromPdf = useDocumentStore((s) => s.doc?.pages.some((p) => p.background.kind === 'pdf') ?? false)
+  const pageCount = useDocumentStore((s) => s.doc?.pages.length ?? 0)
+  const pageIndex = useDocumentStore((s) => s.doc?.pages.findIndex((p) => p.id === s.activePageId) ?? 0)
+  const [which, setWhich] = useState<'all' | 'current' | 'range'>('all')
+  const [range, setRange] = useState('')
   const [scale, setScale] = useState(1)
   const [quality, setQuality] = useState(92)
   const [busy, setBusy] = useState(false)
   if (!page) return null
+  const pages =
+    which === 'all' ? undefined : which === 'current' ? [pageIndex] : parsePageRange(range, pageCount)
+  const invalid = format === 'pdf' && pages === null
 
   const run = async () => {
     if (format === 'pdf') {
+      if (pages === null) return
       // The PDF export shows its own progress (and can take a while with text recognition).
       onClose()
-      await commands.exportPdf(searchable, flatten)
+      await commands.exportPdf(searchable, flatten, pages)
       return
     }
     setBusy(true)
@@ -54,12 +63,37 @@ export function ExportDialog({ onClose }: { onClose(): void }) {
               value={format}
               onChange={(e) => setFormat(e.target.value as ExportFormat | 'pdf')}
             >
-              <option value="pdf">PDF (all pages, text stays text)</option>
+              <option value="pdf">PDF (text stays text)</option>
               <option value="png">PNG (lossless, transparency)</option>
               <option value="jpeg">JPEG</option>
               <option value="webp">WebP</option>
             </select>
           </Field>
+          {format === 'pdf' && pageCount > 1 && (
+            <Field label="Pages">
+              <select
+                className={ui.select}
+                value={which}
+                onChange={(e) => setWhich(e.target.value as typeof which)}
+              >
+                <option value="all">All {pageCount} pages</option>
+                <option value="current">Current page ({pageIndex + 1})</option>
+                <option value="range">Choose pages…</option>
+              </select>
+            </Field>
+          )}
+          {format === 'pdf' && pageCount > 1 && which === 'range' && (
+            <Field label={`Page numbers (1–${pageCount})`}>
+              <input
+                className={ui.input}
+                value={range}
+                placeholder="e.g. 1-3, 5"
+                aria-invalid={invalid && range.trim() !== ''}
+                autoFocus
+                onChange={(e) => setRange(e.target.value)}
+              />
+            </Field>
+          )}
           {format === 'pdf' && (
             <label className={styles.check}>
               <input type="checkbox" checked={searchable} onChange={(e) => setSearchable(e.target.checked)} />
@@ -102,7 +136,7 @@ export function ExportDialog({ onClose }: { onClose(): void }) {
           <button className={ui.button} onClick={onClose}>
             Cancel
           </button>
-          <button className={ui.primaryButton} disabled={busy} onClick={() => void run()}>
+          <button className={ui.primaryButton} disabled={busy || invalid} onClick={() => void run()}>
             Export
           </button>
         </div>

@@ -24,9 +24,7 @@ import type { PdfLayer, PdfOcrLine, PdfPage, PdfPlan, PdfText } from '@shared/pd
 import type { FontFiles, ResolvedFont } from './font-files'
 
 export interface WriterDeps {
-  /** The document's original PDF (needed for pages based on it). */
-  source: Uint8Array | null
-  /** Bytes of a workspace asset (PNG or JPEG). */
+  /** Bytes of a workspace asset (PNG or JPEG pictures, and the PDFs pages are copied from). */
   readAsset(assetId: string): Promise<Uint8Array>
   fonts: FontFiles
 }
@@ -314,19 +312,22 @@ export async function writePdf(plan: PdfPlan, deps: WriterDeps): Promise<Uint8Ar
   doc.setTitle(plan.title)
   doc.setProducer('CallMissed Studio')
   doc.setCreator('CallMissed Studio')
-  const source = plan.pages.some((p) => p.base.kind === 'copy')
-    ? deps.source
-      ? await PDFDocument.load(deps.source)
-      : null
-    : null
-  if (plan.pages.some((p) => p.base.kind === 'copy') && !source)
-    throw new Error('The original PDF is missing')
+  // Each source PDF is parsed once, however many of its pages are used.
+  const sources = new Map<string, Promise<PDFDocument>>()
+  const sourceOf = (assetId: string) => {
+    let source = sources.get(assetId)
+    if (!source) {
+      source = deps.readAsset(assetId).then((bytes) => PDFDocument.load(bytes))
+      sources.set(assetId, source)
+    }
+    return source
+  }
   const writer = new Writer(doc, plan, deps)
   for (const pagePlan of plan.pages) {
     let page: PDFPage
-    if (pagePlan.base.kind === 'copy' && source) {
-      const [copied] = await doc.copyPages(source, [pagePlan.base.index])
-      if (!copied) throw new Error(`Page ${pagePlan.base.index + 1} of the original PDF is missing`)
+    if (pagePlan.base.kind === 'copy') {
+      const [copied] = await doc.copyPages(await sourceOf(pagePlan.base.assetId), [pagePlan.base.index])
+      if (!copied) throw new Error(`Page ${pagePlan.base.index + 1} of its PDF is missing`)
       page = doc.addPage(copied)
     } else {
       page = doc.addPage([pagePlan.width * pagePlan.unit, pagePlan.height * pagePlan.unit])

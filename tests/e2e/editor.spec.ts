@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
+import { strFromU8, unzipSync } from 'fflate'
 import {
   closeApp,
   launchApp,
@@ -154,7 +155,54 @@ test('opens a multi-page PDF with a page list', async () => {
   await window.getByRole('button', { name: 'Don’t save' }).click()
   await expect(window.getByTestId('doc-name')).toHaveText('brochure')
   await window.getByRole('tab', { name: 'Pages (2)' }).click()
-  await expect(window.getByRole('button', { name: 'Page 2' })).toBeVisible()
-  await window.getByRole('button', { name: 'Page 2' }).click()
-  await expect(window.getByRole('button', { name: 'Page 2' })).toHaveAttribute('data-active', 'true')
+  await expect(window.getByRole('button', { name: 'Page 2', exact: true })).toBeVisible()
+  await window.getByRole('button', { name: 'Page 2', exact: true }).click()
+  await expect(window.getByRole('button', { name: 'Page 2', exact: true })).toHaveAttribute(
+    'data-active',
+    'true'
+  )
+})
+
+test('draws a text box and styles it from the text bar', async () => {
+  const box = await canvasBox(window)
+  await window.keyboard.press('t')
+  await expect(window.getByTestId('text-tool-bar')).toBeVisible()
+  const cx = box.x + box.width / 2
+  const cy = box.y + box.height / 2
+  await window.mouse.move(cx - 120, cy)
+  await window.mouse.down()
+  await window.mouse.move(cx + 120, cy + 30, { steps: 5 })
+  await window.mouse.up()
+  const editor = window.locator('textarea').first()
+  await expect(editor).toBeFocused()
+  await window.keyboard.type('Styled words')
+
+  // Styling while typing keeps the text being edited.
+  const bar = window.getByTestId('text-bar')
+  await bar.getByRole('button', { name: 'Bold' }).click()
+  await expect(editor).toBeFocused()
+  await window.keyboard.press('Escape')
+  await expect(bar.getByRole('button', { name: 'Bold' })).toHaveAttribute('aria-pressed', 'true')
+  await bar.getByLabel('Font', { exact: true }).selectOption('Lora')
+  // PDF pages show sizes in points.
+  await expect(bar).toContainText('pt')
+  await bar.getByLabel('Font size').fill('30')
+  await bar.getByLabel('Font size').press('Enter')
+  await bar.getByLabel('Text color').fill('#cc2200')
+
+  const zoom =
+    Number.parseInt((await window.getByTitle('Actual size (Ctrl+1)').textContent()) ?? '', 10) / 100
+  const out = join(dir, 'styled.cmsp')
+  await stubSaveDialog(app, out)
+  await window.keyboard.press('Control+Shift+s')
+  await expect.poll(() => existsSync(out)).toBe(true)
+  const doc = JSON.parse(strFromU8(unzipSync(readFileSync(out))['document.json'] as Uint8Array)) as {
+    pages: { layers: Record<string, unknown>[] }[]
+  }
+  const layer = doc.pages[1]?.layers.find((l) => l['text'] === 'Styled words')
+  // 30 pt at 2 page units per point.
+  expect(layer).toMatchObject({ fontFamily: 'Lora', fontSize: 60, fontWeight: 700, color: '#cc2200' })
+  // As wide as the drawn box.
+  expect(Number(layer?.['width']) * zoom).toBeGreaterThan(240 * 0.95)
+  expect(Number(layer?.['width']) * zoom).toBeLessThan(240 * 1.05)
 })

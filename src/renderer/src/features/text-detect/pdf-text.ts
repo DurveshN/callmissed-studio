@@ -1,4 +1,4 @@
-import type { Page, StudioDocument, TextLayer } from '@shared/document/model'
+import { pdfAssetOf, type Page, type StudioDocument, type TextLayer } from '@shared/document/model'
 import { rectCorners, type RotatedRect } from '@shared/geometry/rotated-rect'
 import { pdfTextRuns } from '../assets/pdf'
 import { measureTextHeight, textLayout } from '../canvas/text-metrics'
@@ -71,8 +71,9 @@ export async function nativeLines(
   page: Page,
   snap: RasterSnapshot
 ): Promise<{ lines: DetectedLine[]; hasImages: boolean } | null> {
-  if (page.background.kind !== 'pdf') return null
-  const { runs, fonts, hasImages } = await pdfTextRuns(doc.id, doc.source.assetId, page.background.pageIndex)
+  const bg = page.background
+  if (bg.kind !== 'pdf') return null
+  const { runs, fonts, hasImages } = await pdfTextRuns(doc.id, pdfAssetOf(doc, bg), bg.pageIndex)
   const lines = groupRuns(runs)
   if (lines.length === 0) return null
   const patched = (rect: RotatedRect) =>

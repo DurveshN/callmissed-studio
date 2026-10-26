@@ -8,7 +8,8 @@ GlobalWorkerOptions.workerSrc = workerUrl
 
 const base = new URL('pdfjs/', document.baseURI).toString()
 
-let loaded: { assetId: string; pdf: Promise<PDFDocumentProxy> } | null = null
+/** Open PDFs by asset (a document's pages can come from several PDFs). */
+const loaded = new Map<string, Promise<PDFDocumentProxy>>()
 const pages = new Map<string, Promise<HTMLCanvasElement>>()
 
 export function openPdf(bytes: Uint8Array): Promise<PDFDocumentProxy> {
@@ -35,11 +36,21 @@ export async function pdfPageSizes(pdf: PDFDocumentProxy): Promise<{ width: numb
 }
 
 function sourcePdf(docId: string, assetId: string): Promise<PDFDocumentProxy> {
-  if (loaded?.assetId !== assetId) {
-    const pdf = call('asset:read', { docId, assetId }).then(openPdf)
-    loaded = { assetId, pdf }
+  let pdf = loaded.get(assetId)
+  if (!pdf) {
+    pdf = call('asset:read', { docId, assetId }).then(openPdf)
+    pdf.catch(() => loaded.delete(assetId))
+    loaded.set(assetId, pdf)
   }
-  return loaded.pdf
+  return pdf
+}
+
+/** Page sizes in PDF points of a PDF asset. */
+export async function pdfAssetPageSizes(
+  docId: string,
+  assetId: string
+): Promise<{ width: number; height: number }[]> {
+  return pdfPageSizes(await sourcePdf(docId, assetId))
 }
 
 /** Renders a page at `pixelsPerPoint` into a canvas (cached). */
@@ -68,8 +79,8 @@ export function renderPdfPage(
 }
 
 export function clearPdfCache(): void {
-  void loaded?.pdf.then((pdf) => pdf.loadingTask.destroy()).catch(() => undefined)
-  loaded = null
+  for (const pdf of loaded.values()) void pdf.then((p) => p.loadingTask.destroy()).catch(() => undefined)
+  loaded.clear()
   pages.clear()
 }
 

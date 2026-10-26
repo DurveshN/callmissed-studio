@@ -38,7 +38,52 @@
 }
 
 .item {
+  position: relative;
   border-block: 2px solid transparent;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  gap: var(--space-2);
+  justify-content: center;
+  padding: var(--space-3) var(--space-3) 0;
+  background: var(--surface);
+}
+
+.hint {
+  margin: var(--space-2) var(--space-3) 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+/* Page actions, shown on hover and on the current page. */
+.more {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  opacity: 0;
+  cursor: pointer;
+}
+
+.item:hover .more,
+.more:focus-visible,
+.item:has([data-active='true']) .more {
+  opacity: 1;
 }
 
 .item[data-drop='before'] {

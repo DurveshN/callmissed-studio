@@ -14,6 +14,13 @@ import type { WorkspaceStore } from './workspace-store'
 
 const MAX_SOURCE_BYTES = 1024 ** 3
 
+/** A file copied into a document's workspace as an asset. */
+interface Imported {
+  assetId: string
+  mime: OpenedSource['mime']
+  fileName: string
+}
+
 export interface ProjectServiceDeps {
   workspaces: WorkspaceStore
   library: LibraryDb
@@ -207,15 +214,23 @@ export class ProjectService {
     await this.deps.workspaces.remove(docId)
   }
 
-  async importImage(
-    docId: string,
-    path: string
-  ): Promise<{ assetId: string; mime: OpenedSource['mime']; fileName: string }> {
+  importImage(docId: string, path: string): Promise<Imported> {
+    return this.importFile(docId, path, false)
+  }
+
+  /** A PDF or image whose pages are added to the document. */
+  importPages(docId: string, path: string): Promise<Imported> {
+    return this.importFile(docId, path, true)
+  }
+
+  private async importFile(docId: string, path: string, allowPdf: boolean): Promise<Imported> {
     this.assertOpen(docId)
     const bytes = await this.readLimited(path)
     const mime = sniffMime(bytes)
-    if (!mime || mime === 'application/pdf')
-      throw new StudioError('INVALID_INPUT', 'Choose a PNG, JPEG, WebP, GIF or BMP image')
+    if (!mime || (mime === 'application/pdf' && !allowPdf)) {
+      const kinds = 'a PNG, JPEG, WebP, GIF or BMP image'
+      throw new StudioError('INVALID_INPUT', `Choose ${allowPdf ? `a PDF or ${kinds}` : kinds}`)
+    }
     const assetId = randomUUID()
     await this.deps.workspaces.writeAsset(docId, assetId, mime, bytes)
     return { assetId, mime, fileName: basename(path) }

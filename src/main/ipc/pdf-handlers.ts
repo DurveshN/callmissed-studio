@@ -16,11 +16,10 @@ export function registerPdfHandlers(projects: ProjectService, fonts: FontFiles):
     return path
   })
 
-  handle('export:write-pdf', async ({ path, docId, sourceAssetId, plan }) => {
+  handle('export:write-pdf', async ({ path, docId, plan }) => {
     // The renderer may only write where the user just chose to save.
     if (!chosen.delete(path)) throw new StudioError('INVALID_INPUT', 'Choose where to save the PDF first')
     const bytes = await writePdf(plan, {
-      source: sourceAssetId ? await projects.readAsset(docId, sourceAssetId) : null,
       readAsset: (assetId) => projects.readAsset(docId, assetId),
       fonts
     })
